@@ -67,8 +67,18 @@
  *   下面兩行 (void)hdr; … 只是讓編譯器不要警告「參數沒用到」；開始寫之後請把它們連同 return TL_ERR_TODO 一起換掉。
  *-------------------------------------------------------------------------*/
 int frame_pack_header(uint8_t hdr[TL_HDR_LEN], uint8_t type, size_t payload_len) {
-    (void)hdr; (void)type; (void)payload_len;
-    return TL_ERR_TODO;
+    size_t length = payload_len + 1;
+    if (length > TL_MAX_FRAME) {
+        return TL_ERR_PROTO;
+    }
+
+    hdr[0] = (uint8_t)(( (uint32_t)length >> 24 ) & 0xFF);
+    hdr[1] = (uint8_t)(( (uint32_t)length >> 16 ) & 0xFF);
+    hdr[2] = (uint8_t)(( (uint32_t)length >> 8  ) & 0xFF);
+    hdr[3] = (uint8_t)(( (uint32_t)length       ) & 0xFF);
+    hdr[4] = type;
+
+    return TL_OK;
 }
 
 /*--------------------------------------------------------------------------
@@ -91,8 +101,22 @@ int frame_pack_header(uint8_t hdr[TL_HDR_LEN], uint8_t type, size_t payload_len)
  *         同一組 type 與 payload_len 先 pack 再 parse，要拿回一模一樣的值。
  *-------------------------------------------------------------------------*/
 int frame_parse_header(const uint8_t hdr[TL_HDR_LEN], uint8_t *type, size_t *payload_len) {
-    (void)hdr; (void)type; (void)payload_len;
-    return TL_ERR_TODO;
+    // 1. 將 4 個 byte 拼回 32-bit 的 length
+    uint32_t length = ((uint32_t)hdr[0] << 24) |
+                      ((uint32_t)hdr[1] << 16) |
+                      ((uint32_t)hdr[2] << 8)  |
+                      ((uint32_t)hdr[3]);
+
+    // 2. 安全檢查：長度不能為 0，也不能超過上限
+    if (length == 0 || length > TL_MAX_FRAME) {
+        return TL_ERR_PROTO;
+    }
+
+    // 3. 寫入結果
+    *type = hdr[4];
+    *payload_len = length - 1;
+
+    return TL_OK;
 }
 
 /*--------------------------------------------------------------------------
