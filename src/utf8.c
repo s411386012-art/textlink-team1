@@ -63,6 +63,55 @@
  *   (void)s; (void)n; 只是讓編譯器不要警告「參數沒用到」，開始寫之後請拿掉。
  *-------------------------------------------------------------------------*/
 int utf8_validate(const uint8_t *s, size_t n) {
-    (void)s; (void)n;
-    return TL_ERR_TODO;
+    size_t i = 0;
+    while (i < n) {
+        uint8_t c = s[i];
+        int bytes = 0;
+        uint32_t cp = 0;
+        uint32_t min_cp = 0;
+
+        // 1. 判斷前導位元組，決定字元長度與起始 Code Point
+        if ((c & 0x80) == 0x00) {
+            bytes = 1;
+            cp = c;
+            min_cp = 0x0000;
+        } else if ((c & 0xE0) == 0xC0) {
+            bytes = 2;
+            cp = c & 0x1F;
+            min_cp = 0x0080;
+        } else if ((c & 0xF0) == 0xE0) {
+            bytes = 3;
+            cp = c & 0x0F;
+            min_cp = 0x0800;
+        } else if ((c & 0xF8) == 0xF0) {
+            bytes = 4;
+            cp = c & 0x07;
+            min_cp = 0x10000;
+        } else {
+            // 抓出非法前導位元組 (例如 F5) 或孤立的續位元組 (例如 80)
+            return TL_ERR_DATA; 
+        }
+
+        // 2. 邊界防護：確認剩下的陣列長度，夠不夠裝這個字元
+        if (i + bytes > n) {
+            return TL_ERR_DATA; 
+        }
+
+        // 3. 驗證續位元組，並逐步拼湊出完整的 Code Point
+        for (int j = 1; j < bytes; j++) {
+            if ((s[i + j] & 0xC0) != 0x80) {
+                return TL_ERR_DATA; // 續位元組不是 10xxxxxx 開頭
+            }
+            cp = (cp << 6) | (s[i + j] & 0x3F);
+        }
+
+        // 4. RFC 3629 規定的三種非法極端情況
+        if (cp < min_cp || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) {
+            return TL_ERR_DATA; 
+        }
+
+        i += bytes; // 前進到下一個字元的開頭
+    }
+    
+    return TL_OK;
 }
