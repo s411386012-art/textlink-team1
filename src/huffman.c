@@ -106,9 +106,9 @@ static int get_next_char(const uint8_t *s, size_t n, size_t *pos) {
     else if ((c & 0xE0) == 0xC0) { bytes = 2; cp = c & 0x1F; min_cp = 0x80; }
     else if ((c & 0xF0) == 0xE0) { bytes = 3; cp = c & 0x0F; min_cp = 0x800; }
     else if ((c & 0xF8) == 0xF0) { bytes = 4; cp = c & 0x07; min_cp = 0x10000; }
-    else return -1; // 非法前導
+    else return -1;
 
-    if (*pos + bytes > n) return -1; // 截斷
+    if (*pos + bytes > n) return -1;
     for (int j = 1; j < bytes; j++) {
         if ((s[*pos + j] & 0xC0) != 0x80) return -1;
         cp = (cp << 6) | (s[*pos + j] & 0x3F);
@@ -138,34 +138,100 @@ static void put_char(uint32_t cp, uint8_t *buf, size_t *pos) {
 }
 
 // -----------------------------------------------------------------------------
-// ★ TODO 4：編碼 (支援 SYM_BYTE 與 SYM_CHAR)
+// 5. WAV 解析工具 (SYM_S16 專用)
+// -----------------------------------------------------------------------------
+typedef struct {
+    size_t data_offset; // data chunk 的 payload 起點
+    size_t data_len;    // data payload 長度 (bytes)
+    size_t total_hdr;   // data payload 之前的全部 bytes
+} WavInfo;
+
+static int parse_wav(const uint8_t *in, size_t in_len, WavInfo *info) {
+    if (in_len < 12) return TL_ERR_DATA;
+    if (memcmp(in, "RIFF", 4) != 0 || memcmp(in + 8, "WAVE", 4) != 0) return TL_ERR_DATA;
+
+    size_t pos = 12;
+    int found_fmt = 0, found_data = 0;
+
+    while (pos + 8 <= in_len) {
+        const char *id = (const char *)(in + pos);
+        uint32_t sz = (uint32_t)in[pos+4] | ((uint32_t)in[pos+5] << 8) |
+                      ((uint32_t)in[pos+6] << 16) | ((uint32_t)in[pos+7] << 24);
+        pos += 8;
+
+        if (memcmp(id, "fmt ", 4) == 0) {
+            if (sz < 16 || pos + sz > in_len) return TL_ERR_DATA;
+            uint16_t audio_fmt = (uint16_t)in[pos] | ((uint16_t)in[pos+1] << 8);
+            uint16_t bits = (uint16_t)in[pos+14] | ((uint16_t)in[pos+15] << 8);
+            if (audio_fmt != 1 || bits != 16) return TL_ERR_DATA; // 必須是 16-bit PCM
+            found_fmt = 1;
+            pos += sz + (sz & 1); // RIFF padding，奇數長度要補 1 byte
+        } else if (memcmp(id, "data", 4) == 0) {
+            if (!found_fmt) return TL_ERR_DATA;
+            
+            // 如果檔案結尾被截斷，只算到實際檔案結尾為止
+            if (pos + sz > in_len) sz = (uint32_t)(in_len - pos);
+            
+            info->data_offset = pos;
+            // 關鍵修正：扣除湊不成 16-bit sample 的奇數 byte，讓它自然落入 tail_len
+            info->data_len = sz - (sz % 2); 
+            info->total_hdr = pos;
+            
+            found_data = 1;
+            break;
+        } else {
+            pos += sz + (sz & 1); // 略過其他 chunk，一樣要處理 padding
+        }
+    }
+
+    if (!found_fmt || !found_data) return TL_ERR_DATA;
+    return TL_OK;
+}
+
+// -----------------------------------------------------------------------------
+// ★ TODO 4：編碼 (支援 SYM_BYTE, SYM_CHAR, SYM_S16)
 // -----------------------------------------------------------------------------
 int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, size_t *out_len) {
-    if (sym == SYM_S16) return TL_ERR_DATA; // 暫未支援 WAV
+    WavInfo winfo = {0};
+    if (sym == SYM_S16) {
+        int rc = parse_wav(in, in_len, &winfo);
+        if (rc != TL_OK) return rc;
+    }
 
     if (in_len == 0) {
-        *out = calloc(13, 1);
+        *out = calloc(21, 1);
         if (!*out) return TL_ERR_NOMEM;
         (*out)[0] = sym;
-        *out_len = 13;
+        *out_len = 21;
         return TL_OK;
     }
 
-    uint32_t max_sym = (sym == SYM_BYTE) ? 256 : 0x110000;
+    uint32_t max_sym = 256;
+    if (sym == SYM_CHAR) max_sym = 0x110000;
+    else if (sym == SYM_S16) max_sym = 65536;
+
     uint64_t *freq = calloc(max_sym, sizeof(uint64_t));
     if (!freq) return TL_ERR_NOMEM;
 
     uint32_t sym_count = 0;
-    size_t pos = 0;
-    while (pos < in_len) {
-        if (sym == SYM_BYTE) {
-            freq[in[pos++]]++;
-        } else {
+    if (sym == SYM_BYTE) {
+        for (size_t i = 0; i < in_len; i++) freq[in[i]]++;
+        sym_count = (uint32_t)in_len;
+    } else if (sym == SYM_CHAR) {
+        size_t pos = 0;
+        while (pos < in_len) {
             int cp = get_next_char(in, in_len, &pos);
-            if (cp == -1) { free(freq); return TL_ERR_DATA; } // UTF-8 解析失敗，交給上層 Fallback
+            if (cp == -1) { free(freq); return TL_ERR_DATA; }
             freq[cp]++;
+            sym_count++;
         }
-        sym_count++;
+    } else { // SYM_S16
+        const uint8_t *d = in + winfo.data_offset;
+        for (size_t i = 0; i < winfo.data_len; i += 2) {
+            uint16_t s = (uint16_t)d[i] | ((uint16_t)d[i+1] << 8);
+            freq[s]++;
+            sym_count++;
+        }
     }
 
     HuffNode *nodes = calloc(max_sym * 2, sizeof(HuffNode));
@@ -196,19 +262,35 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
         }
     }
 
-    size_t sym_size = (sym == SYM_BYTE) ? 1 : 4;
+    size_t sym_size = (sym == SYM_BYTE) ? 1 : ((sym == SYM_S16) ? 2 : 4);
     size_t cb_size = unique_symbols * (sym_size + 1 + 4);
-    
+
     size_t total_bits = 0;
-    pos = 0;
-    while (pos < in_len) {
-        uint32_t cp = (sym == SYM_BYTE) ? in[pos++] : (uint32_t)get_next_char(in, in_len, &pos);
-        total_bits += codebook[cp].length;
+    if (sym == SYM_BYTE) {
+        for (size_t i = 0; i < in_len; i++) total_bits += codebook[in[i]].length;
+    } else if (sym == SYM_CHAR) {
+        size_t pos = 0;
+        while (pos < in_len) {
+            uint32_t cp = (uint32_t)get_next_char(in, in_len, &pos);
+            total_bits += codebook[cp].length;
+        }
+    } else {
+        const uint8_t *d = in + winfo.data_offset;
+        for (size_t i = 0; i < winfo.data_len; i += 2) {
+            uint16_t s = (uint16_t)d[i] | ((uint16_t)d[i+1] << 8);
+            total_bits += codebook[s].length;
+        }
     }
-    
+
     size_t bitstream_bytes = (total_bits + 7) / 8;
-    size_t final_size = 13 + cb_size + bitstream_bytes;
-    
+    size_t wav_extra = 0;
+    size_t tail_len = 0;
+    if (sym == SYM_S16) {
+        tail_len = in_len - (winfo.data_offset + winfo.data_len);
+        wav_extra = 8 + winfo.total_hdr + tail_len; // 8 bytes 存長度 + hdr + tail
+    }
+
+    size_t final_size = 13 + wav_extra + cb_size + bitstream_bytes;
     uint8_t *buf = calloc(final_size, 1);
     if (!buf) { free(nodes); free(codebook); return TL_ERR_NOMEM; }
 
@@ -218,10 +300,25 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
     buf[9] = (unique_symbols >> 24) & 0xFF; buf[10] = (unique_symbols >> 16) & 0xFF; buf[11] = (unique_symbols >> 8) & 0xFF; buf[12] = unique_symbols & 0xFF;
 
     size_t out_pos = 13;
+    if (sym == SYM_S16) {
+        buf[out_pos++] = (winfo.total_hdr >> 24) & 0xFF; buf[out_pos++] = (winfo.total_hdr >> 16) & 0xFF;
+        buf[out_pos++] = (winfo.total_hdr >> 8) & 0xFF;  buf[out_pos++] = winfo.total_hdr & 0xFF;
+        buf[out_pos++] = (tail_len >> 24) & 0xFF; buf[out_pos++] = (tail_len >> 16) & 0xFF;
+        buf[out_pos++] = (tail_len >> 8) & 0xFF;  buf[out_pos++] = tail_len & 0xFF;
+        memcpy(buf + out_pos, in, winfo.total_hdr);
+        out_pos += winfo.total_hdr;
+        if (tail_len > 0) {
+            memcpy(buf + out_pos, in + winfo.data_offset + winfo.data_len, tail_len);
+            out_pos += tail_len;
+        }
+    }
+
     for (uint32_t i = 0; i < max_sym; i++) {
         if (codebook[i].length > 0) {
             if (sym == SYM_BYTE) {
                 buf[out_pos++] = i & 0xFF;
+            } else if (sym == SYM_S16) {
+                buf[out_pos++] = (i >> 8) & 0xFF; buf[out_pos++] = i & 0xFF;
             } else {
                 buf[out_pos++] = (i >> 24) & 0xFF; buf[out_pos++] = (i >> 16) & 0xFF;
                 buf[out_pos++] = (i >> 8) & 0xFF; buf[out_pos++] = i & 0xFF;
@@ -234,12 +331,28 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
     }
 
     BitWriter bw = { .buf = buf, .cap = final_size, .byte_pos = out_pos, .bit_offset = 0 };
-    pos = 0;
-    while (pos < in_len) {
-        uint32_t cp = (sym == SYM_BYTE) ? in[pos++] : (uint32_t)get_next_char(in, in_len, &pos);
-        uint32_t c = codebook[cp].code;
-        int len = codebook[cp].length;
-        for (int b = len - 1; b >= 0; b--) bw_write_bit(&bw, (c >> b) & 1);
+    if (sym == SYM_BYTE) {
+        for (size_t i = 0; i < in_len; i++) {
+            uint32_t c = codebook[in[i]].code;
+            int len = codebook[in[i]].length;
+            for (int b = len - 1; b >= 0; b--) bw_write_bit(&bw, (c >> b) & 1);
+        }
+    } else if (sym == SYM_CHAR) {
+        size_t pos = 0;
+        while (pos < in_len) {
+            uint32_t cp = (uint32_t)get_next_char(in, in_len, &pos);
+            uint32_t c = codebook[cp].code;
+            int len = codebook[cp].length;
+            for (int b = len - 1; b >= 0; b--) bw_write_bit(&bw, (c >> b) & 1);
+        }
+    } else {
+        const uint8_t *d = in + winfo.data_offset;
+        for (size_t i = 0; i < winfo.data_len; i += 2) {
+            uint16_t s = (uint16_t)d[i] | ((uint16_t)d[i+1] << 8);
+            uint32_t c = codebook[s].code;
+            int len = codebook[s].length;
+            for (int b = len - 1; b >= 0; b--) bw_write_bit(&bw, (c >> b) & 1);
+        }
     }
 
     free(nodes); free(codebook);
@@ -249,12 +362,12 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
 }
 
 // -----------------------------------------------------------------------------
-// ★ TODO 5：解碼 (支援 SYM_BYTE 與 SYM_CHAR)
+// ★ TODO 5：解碼 (支援 SYM_BYTE, SYM_CHAR, SYM_S16)
 // -----------------------------------------------------------------------------
 int huff_decode(const uint8_t *in, size_t in_len, size_t max_out, uint8_t **out, size_t *out_len) {
     if (in_len < 13) return TL_ERR_DATA;
     uint8_t sym = in[0];
-    if (sym == SYM_S16) return TL_ERR_DATA;
+    if (sym != SYM_BYTE && sym != SYM_CHAR && sym != SYM_S16) return TL_ERR_DATA;
 
     uint32_t orig_len = ((uint32_t)in[1] << 24) | ((uint32_t)in[2] << 16) | ((uint32_t)in[3] << 8) | in[4];
     uint32_t sym_count = ((uint32_t)in[5] << 24) | ((uint32_t)in[6] << 16) | ((uint32_t)in[7] << 8) | in[8];
@@ -268,22 +381,38 @@ int huff_decode(const uint8_t *in, size_t in_len, size_t max_out, uint8_t **out,
     }
 
     if (orig_len > max_out) return TL_ERR_DATA;
-    uint32_t max_sym = (sym == SYM_BYTE) ? 256 : 0x110000;
+    uint32_t max_sym = (sym == SYM_BYTE) ? 256 : ((sym == SYM_S16) ? 65536 : 0x110000);
     if (unique_symbols > max_sym) return TL_ERR_DATA;
 
-    size_t sym_size = (sym == SYM_BYTE) ? 1 : 4;
+    size_t pos = 13;
+    uint32_t total_hdr = 0, tail_len = 0;
+    const uint8_t *hdr_bytes = NULL, *tail_bytes = NULL;
+
+    if (sym == SYM_S16) {
+        if (pos + 8 > in_len) return TL_ERR_DATA;
+        total_hdr = ((uint32_t)in[pos] << 24) | ((uint32_t)in[pos+1] << 16) | ((uint32_t)in[pos+2] << 8) | in[pos+3];
+        tail_len = ((uint32_t)in[pos+4] << 24) | ((uint32_t)in[pos+5] << 16) | ((uint32_t)in[pos+6] << 8) | in[pos+7];
+        pos += 8;
+        if (pos + total_hdr + tail_len > in_len) return TL_ERR_DATA;
+        hdr_bytes = in + pos; pos += total_hdr;
+        tail_bytes = in + pos; pos += tail_len;
+    }
+
+    size_t sym_size = (sym == SYM_BYTE) ? 1 : ((sym == SYM_S16) ? 2 : 4);
     size_t cb_size = unique_symbols * (sym_size + 1 + 4);
-    if (13 + cb_size > in_len) return TL_ERR_DATA;
+    if (pos + cb_size > in_len) return TL_ERR_DATA;
 
     HuffCode *codebook = calloc(max_sym, sizeof(HuffCode));
     uint32_t *active_symbols = calloc(unique_symbols, sizeof(uint32_t));
     if (!codebook || !active_symbols) { free(codebook); free(active_symbols); return TL_ERR_NOMEM; }
 
-    size_t pos = 13;
     for (uint32_t i = 0; i < unique_symbols; i++) {
         uint32_t sym_val = 0;
         if (sym == SYM_BYTE) {
             sym_val = in[pos++];
+        } else if (sym == SYM_S16) {
+            sym_val = ((uint32_t)in[pos] << 8) | in[pos+1];
+            pos += 2;
         } else {
             sym_val = ((uint32_t)in[pos] << 24) | ((uint32_t)in[pos+1] << 16) | ((uint32_t)in[pos+2] << 8) | in[pos+3];
             pos += 4;
@@ -301,11 +430,17 @@ int huff_decode(const uint8_t *in, size_t in_len, size_t max_out, uint8_t **out,
     uint8_t *buf = calloc(orig_len + 1, 1);
     if (!buf) { free(codebook); free(active_symbols); return TL_ERR_NOMEM; }
 
+    size_t output_pos = 0;
+    if (sym == SYM_S16) {
+        if (total_hdr > orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
+        memcpy(buf, hdr_bytes, total_hdr);
+        output_pos = total_hdr;
+    }
+
     BitReader br = { .buf = in, .len = in_len, .byte_pos = pos, .bit_offset = 0 };
     uint32_t current_code = 0;
     int current_len = 0;
     size_t decoded_syms = 0;
-    size_t output_pos = 0;
 
     while (decoded_syms < sym_count) {
         int bit = br_read_bit(&br);
@@ -320,9 +455,13 @@ int huff_decode(const uint8_t *in, size_t in_len, size_t max_out, uint8_t **out,
                 if (sym == SYM_BYTE) {
                     if (output_pos >= orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
                     buf[output_pos++] = s;
-                } else {
+                } else if (sym == SYM_CHAR) {
                     if (output_pos >= orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
                     put_char(s, buf, &output_pos);
+                } else { // SYM_S16
+                    if (output_pos + 2 > orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
+                    buf[output_pos++] = s & 0xFF;
+                    buf[output_pos++] = (s >> 8) & 0xFF;
                 }
                 decoded_syms++;
                 current_code = 0;
@@ -332,6 +471,12 @@ int huff_decode(const uint8_t *in, size_t in_len, size_t max_out, uint8_t **out,
         }
     }
     
+    if (sym == SYM_S16 && tail_len > 0) {
+        if (output_pos + tail_len > orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
+        memcpy(buf + output_pos, tail_bytes, tail_len);
+        output_pos += tail_len;
+    }
+
     free(codebook); free(active_symbols);
     if (output_pos != orig_len) { free(buf); return TL_ERR_DATA; }
 
