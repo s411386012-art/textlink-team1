@@ -28,49 +28,76 @@ typedef struct {
 } HuffNode;
 
 typedef struct {
-    uint32_t code;   
+    uint64_t code;   /* 1..64 bits; never shift by 64 or more */
     int length;      
 } HuffCode;
 
 // -----------------------------------------------------------------------------
 // 2. 核心演算法：建樹與遞迴產生 Codebook
 // -----------------------------------------------------------------------------
+/* TODO 4: the heap stores node indices; ties use index for reproducibility. */
+static int node_less(const HuffNode *nodes, int a, int b) {
+    return nodes[a].freq < nodes[b].freq ||
+           (nodes[a].freq == nodes[b].freq && a < b);
+}
+
+static void heap_push(int *heap, int *count, int node, const HuffNode *nodes) {
+    int p = (*count)++;
+    while (p > 0) {
+        int parent = (p - 1) / 2;
+        if (!node_less(nodes, node, heap[parent])) break;
+        heap[p] = heap[parent];
+        p = parent;
+    }
+    heap[p] = node;
+}
+
+static int heap_pop(int *heap, int *count, const HuffNode *nodes) {
+    int result = heap[0], last = heap[--(*count)], p = 0;
+    while (p * 2 + 1 < *count) {
+        int child = p * 2 + 1;
+        if (child + 1 < *count && node_less(nodes, heap[child + 1], heap[child])) child++;
+        if (!node_less(nodes, heap[child], last)) break;
+        heap[p] = heap[child];
+        p = child;
+    }
+    if (*count > 0) heap[p] = last;
+    return result;
+}
+
 static int build_huffman_tree(HuffNode *nodes, int num_nodes) {
     if (num_nodes == 0) return -1;
     if (num_nodes == 1) return 0;
-    int total_nodes = num_nodes;
+    int total_nodes = num_nodes, count = 0;
+    int *heap = malloc((size_t)num_nodes * sizeof(*heap));
+    if (!heap) return -2;
+    for (int i = 0; i < num_nodes; i++) heap_push(heap, &count, i, nodes);
     
     for (int step = 1; step < num_nodes; step++) {
-        int min1 = -1, min2 = -1;
-        for (int i = 0; i < total_nodes; i++) {
-            if (nodes[i].freq > 0) { 
-                if (min1 == -1 || nodes[i].freq < nodes[min1].freq) {
-                    min2 = min1; min1 = i;
-                } else if (min2 == -1 || nodes[i].freq < nodes[min2].freq) {
-                    min2 = i;
-                }
-            }
-        }
+        int min1 = heap_pop(heap, &count, nodes);
+        int min2 = heap_pop(heap, &count, nodes);
         nodes[total_nodes].symbol = 0; 
         nodes[total_nodes].freq = nodes[min1].freq + nodes[min2].freq;
         nodes[total_nodes].left = min1;
         nodes[total_nodes].right = min2;
-        nodes[min1].freq = 0;
-        nodes[min2].freq = 0;
+        heap_push(heap, &count, total_nodes, nodes);
         total_nodes++;
     }
+    free(heap);
     return total_nodes - 1; 
 }
 
-static void generate_codes(HuffNode *nodes, int node_idx, uint32_t current_code, int current_len, HuffCode *codebook) {
-    if (node_idx == -1) return;
+static int generate_codes(HuffNode *nodes, int node_idx, uint64_t current_code, int current_len, HuffCode *codebook) {
+    if (node_idx == -1) return TL_OK;
     if (nodes[node_idx].left == -1 && nodes[node_idx].right == -1) {
         codebook[nodes[node_idx].symbol].code = current_code;
         codebook[nodes[node_idx].symbol].length = (current_len == 0) ? 1 : current_len; 
-        return;
+        return TL_OK;
     }
-    generate_codes(nodes, nodes[node_idx].left, (current_code << 1) | 0, current_len + 1, codebook);
-    generate_codes(nodes, nodes[node_idx].right, (current_code << 1) | 1, current_len + 1, codebook);
+    if (current_len >= 64) return TL_ERR_DATA;
+    int rc = generate_codes(nodes, nodes[node_idx].left, current_code << 1, current_len + 1, codebook);
+    if (rc != TL_OK) return rc;
+    return generate_codes(nodes, nodes[node_idx].right, (current_code << 1) | 1, current_len + 1, codebook);
 }
 
 // -----------------------------------------------------------------------------
@@ -192,6 +219,11 @@ static int parse_wav(const uint8_t *in, size_t in_len, WavInfo *info) {
 // ★ TODO 4：編碼 (支援 SYM_BYTE, SYM_CHAR, SYM_S16)
 // -----------------------------------------------------------------------------
 int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, size_t *out_len) {
+    if (!out || !out_len) return TL_ERR_DATA;
+    *out = NULL;
+    *out_len = 0;
+    if ((!in && in_len) || in_len > TL_MAX_FILE ||
+        (sym != SYM_BYTE && sym != SYM_CHAR && sym != SYM_S16)) return TL_ERR_DATA;
     WavInfo winfo = {0};
     if (sym == SYM_S16) {
         int rc = parse_wav(in, in_len, &winfo);
@@ -199,10 +231,10 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
     }
 
     if (in_len == 0) {
-        *out = calloc(21, 1);
+        *out = calloc(13, 1);
         if (!*out) return TL_ERR_NOMEM;
         (*out)[0] = sym;
-        *out_len = 21;
+        *out_len = 13;
         return TL_OK;
     }
 
@@ -250,6 +282,7 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
     free(freq);
 
     int root_idx = build_huffman_tree(nodes, unique_symbols);
+    if (root_idx == -2) { free(nodes); return TL_ERR_NOMEM; }
     HuffCode *codebook = calloc(max_sym, sizeof(HuffCode));
     if (!codebook) { free(nodes); return TL_ERR_NOMEM; }
 
@@ -258,12 +291,17 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
             codebook[nodes[0].symbol].code = 0;
             codebook[nodes[0].symbol].length = 1;
         } else {
-            generate_codes(nodes, root_idx, 0, 0, codebook);
+            int rc = generate_codes(nodes, root_idx, 0, 0, codebook);
+            if (rc != TL_OK) { free(nodes); free(codebook); return rc; }
         }
     }
 
     size_t sym_size = (sym == SYM_BYTE) ? 1 : ((sym == SYM_S16) ? 2 : 4);
-    size_t cb_size = unique_symbols * (sym_size + 1 + 4);
+    size_t cb_size = 0;
+    for (uint32_t i = 0; i < max_sym; i++) {
+        if (codebook[i].length)
+            cb_size += sym_size + 1 + (codebook[i].length <= 32 ? 4 : 8);
+    }
 
     size_t total_bits = 0;
     if (sym == SYM_BYTE) {
@@ -324,16 +362,18 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
                 buf[out_pos++] = (i >> 8) & 0xFF; buf[out_pos++] = i & 0xFF;
             }
             buf[out_pos++] = codebook[i].length;
-            uint32_t c = codebook[i].code;
-            buf[out_pos++] = (c >> 24) & 0xFF; buf[out_pos++] = (c >> 16) & 0xFF;
-            buf[out_pos++] = (c >> 8) & 0xFF; buf[out_pos++] = c & 0xFF;
+            uint64_t c = codebook[i].code;
+            /* Preserve the old 4-byte record for codes <=32 bits. */
+            int code_bytes = codebook[i].length <= 32 ? 4 : 8;
+            for (int b = code_bytes - 1; b >= 0; b--)
+                buf[out_pos++] = (uint8_t)(c >> (b * 8));
         }
     }
 
     BitWriter bw = { .buf = buf, .cap = final_size, .byte_pos = out_pos, .bit_offset = 0 };
     if (sym == SYM_BYTE) {
         for (size_t i = 0; i < in_len; i++) {
-            uint32_t c = codebook[in[i]].code;
+            uint64_t c = codebook[in[i]].code;
             int len = codebook[in[i]].length;
             for (int b = len - 1; b >= 0; b--) bw_write_bit(&bw, (c >> b) & 1);
         }
@@ -341,7 +381,7 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
         size_t pos = 0;
         while (pos < in_len) {
             uint32_t cp = (uint32_t)get_next_char(in, in_len, &pos);
-            uint32_t c = codebook[cp].code;
+            uint64_t c = codebook[cp].code;
             int len = codebook[cp].length;
             for (int b = len - 1; b >= 0; b--) bw_write_bit(&bw, (c >> b) & 1);
         }
@@ -349,7 +389,7 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
         const uint8_t *d = in + winfo.data_offset;
         for (size_t i = 0; i < winfo.data_len; i += 2) {
             uint16_t s = (uint16_t)d[i] | ((uint16_t)d[i+1] << 8);
-            uint32_t c = codebook[s].code;
+            uint64_t c = codebook[s].code;
             int len = codebook[s].length;
             for (int b = len - 1; b >= 0; b--) bw_write_bit(&bw, (c >> b) & 1);
         }
@@ -364,123 +404,173 @@ int huff_encode(const uint8_t *in, size_t in_len, tl_sym_t sym, uint8_t **out, s
 // -----------------------------------------------------------------------------
 // ★ TODO 5：解碼 (支援 SYM_BYTE, SYM_CHAR, SYM_S16)
 // -----------------------------------------------------------------------------
+/* TODO 5: validated prefix tree. Each bit selects one child: O(bit count).
+ * A full binary tree with K leaves has 2*K-1 nodes. The single-symbol
+ * convention (one edge labelled 0) needs two nodes. */
+typedef struct {
+    int child[2];
+    int symbol;
+} DecodeNode;
+
+static uint32_t read_be32(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] << 8) | p[3];
+}
+
+static int scalar_valid(uint32_t cp) {
+    return cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF);
+}
+
+static size_t char_bytes(uint32_t cp) {
+    return cp <= 0x7F ? 1 : cp <= 0x7FF ? 2 : cp <= 0xFFFF ? 3 : 4;
+}
+
 int huff_decode(const uint8_t *in, size_t in_len, size_t max_out, uint8_t **out, size_t *out_len) {
-    if (in_len < 13) return TL_ERR_DATA;
+    int rc = TL_ERR_DATA;
+    uint8_t *seen = NULL, *buf = NULL;
+    DecodeNode *tree = NULL;
+    if (!out || !out_len) return TL_ERR_DATA;
+    *out = NULL;
+    *out_len = 0;
+    if (!in || in_len < 13) return TL_ERR_DATA;
     uint8_t sym = in[0];
     if (sym != SYM_BYTE && sym != SYM_CHAR && sym != SYM_S16) return TL_ERR_DATA;
+    uint32_t orig_len = read_be32(in + 1);
+    uint32_t sym_count = read_be32(in + 5);
+    uint32_t unique_symbols = read_be32(in + 9);
+    if (orig_len > max_out || orig_len > TL_MAX_FILE) return TL_ERR_DATA;
 
-    uint32_t orig_len = ((uint32_t)in[1] << 24) | ((uint32_t)in[2] << 16) | ((uint32_t)in[3] << 8) | in[4];
-    uint32_t sym_count = ((uint32_t)in[5] << 24) | ((uint32_t)in[6] << 16) | ((uint32_t)in[7] << 8) | in[8];
-    uint32_t unique_symbols = ((uint32_t)in[9] << 24) | ((uint32_t)in[10] << 16) | ((uint32_t)in[11] << 8) | in[12];
-
+    /* The only empty BYTE/CHAR representation is exactly 13 bytes. An empty
+     * input is not a WAV; a header-only WAV follows the normal S16 path. */
     if (orig_len == 0) {
-        *out = calloc(1, 1);
-        if (!*out) return TL_ERR_NOMEM;
-        *out_len = 0;
+        if (sym == SYM_S16 || sym_count || unique_symbols || in_len != 13) return TL_ERR_DATA;
+        buf = calloc(1, 1);
+        if (!buf) return TL_ERR_NOMEM;
+        *out = buf;
         return TL_OK;
     }
 
-    if (orig_len > max_out) return TL_ERR_DATA;
-    uint32_t max_sym = (sym == SYM_BYTE) ? 256 : ((sym == SYM_S16) ? 65536 : 0x110000);
-    if (unique_symbols > max_sym) return TL_ERR_DATA;
-
-    size_t pos = 13;
-    uint32_t total_hdr = 0, tail_len = 0;
+    uint32_t max_sym = sym == SYM_BYTE ? 256 : sym == SYM_S16 ? 65536 : 0x110000;
+    if (unique_symbols > max_sym || unique_symbols > sym_count ||
+        ((sym_count == 0) != (unique_symbols == 0))) return TL_ERR_DATA;
+    size_t pos = 13, total_hdr = 0, tail_len = 0;
     const uint8_t *hdr_bytes = NULL, *tail_bytes = NULL;
-
     if (sym == SYM_S16) {
-        if (pos + 8 > in_len) return TL_ERR_DATA;
-        total_hdr = ((uint32_t)in[pos] << 24) | ((uint32_t)in[pos+1] << 16) | ((uint32_t)in[pos+2] << 8) | in[pos+3];
-        tail_len = ((uint32_t)in[pos+4] << 24) | ((uint32_t)in[pos+5] << 16) | ((uint32_t)in[pos+6] << 8) | in[pos+7];
+        if (in_len - pos < 8) return TL_ERR_DATA;
+        total_hdr = read_be32(in + pos);
+        tail_len = read_be32(in + pos + 4);
         pos += 8;
-        if (pos + total_hdr + tail_len > in_len) return TL_ERR_DATA;
-        hdr_bytes = in + pos; pos += total_hdr;
-        tail_bytes = in + pos; pos += tail_len;
+        if (total_hdr > in_len - pos) return TL_ERR_DATA;
+        hdr_bytes = in + pos;
+        pos += total_hdr;
+        if (tail_len > in_len - pos) return TL_ERR_DATA;
+        tail_bytes = in + pos;
+        pos += tail_len;
+        if (total_hdr > orig_len || tail_len > orig_len - total_hdr ||
+            (uint64_t)sym_count * 2 != orig_len - total_hdr - tail_len) return TL_ERR_DATA;
+    } else if (sym == SYM_BYTE) {
+        if (sym_count != orig_len) return TL_ERR_DATA;
+    } else {
+        if (sym_count > orig_len || (uint64_t)sym_count * 4 < orig_len) return TL_ERR_DATA;
     }
 
-    size_t sym_size = (sym == SYM_BYTE) ? 1 : ((sym == SYM_S16) ? 2 : 4);
-    size_t cb_size = unique_symbols * (sym_size + 1 + 4);
-    if (pos + cb_size > in_len) return TL_ERR_DATA;
-
-    HuffCode *codebook = calloc(max_sym, sizeof(HuffCode));
-    uint32_t *active_symbols = calloc(unique_symbols, sizeof(uint32_t));
-    if (!codebook || !active_symbols) { free(codebook); free(active_symbols); return TL_ERR_NOMEM; }
-
+    size_t sym_size = sym == SYM_BYTE ? 1 : sym == SYM_S16 ? 2 : 4;
+    /* Each record needs at least symbol + length + four code bytes. Check
+     * input size before allocating the tree or symbol-validation table. */
+    if (unique_symbols > (in_len - pos) / (sym_size + 5)) return TL_ERR_DATA;
+    size_t capacity = unique_symbols ? (size_t)unique_symbols * 2 : 1;
+    tree = malloc(capacity * sizeof(*tree));
+    seen = calloc(max_sym, 1);
+    if (!tree || !seen) { rc = TL_ERR_NOMEM; goto fail; }
+    for (size_t i = 0; i < capacity; i++) {
+        tree[i].child[0] = tree[i].child[1] = -1;
+        tree[i].symbol = -1;
+    }
+    size_t used = 1;
     for (uint32_t i = 0; i < unique_symbols; i++) {
-        uint32_t sym_val = 0;
-        if (sym == SYM_BYTE) {
-            sym_val = in[pos++];
-        } else if (sym == SYM_S16) {
-            sym_val = ((uint32_t)in[pos] << 8) | in[pos+1];
-            pos += 2;
-        } else {
-            sym_val = ((uint32_t)in[pos] << 24) | ((uint32_t)in[pos+1] << 16) | ((uint32_t)in[pos+2] << 8) | in[pos+3];
-            pos += 4;
-            if (sym_val >= max_sym) { free(codebook); free(active_symbols); return TL_ERR_DATA; }
+        if (in_len - pos < sym_size + 1) goto fail;
+        uint32_t symbol = 0;
+        for (size_t j = 0; j < sym_size; j++) symbol = (symbol << 8) | in[pos++];
+        unsigned length = in[pos++];
+        if (symbol >= max_sym || seen[symbol] || length == 0 || length > 64 ||
+            (sym == SYM_CHAR && !scalar_valid(symbol))) goto fail;
+        seen[symbol] = 1;
+        unsigned code_bytes = length <= 32 ? 4 : 8;
+        if (in_len - pos < code_bytes) goto fail;
+        uint64_t code = 0;
+        for (unsigned j = 0; j < code_bytes; j++) code = (code << 8) | in[pos++];
+        /* Guard the shift: shifting a uint64_t by 64 is undefined in C. */
+        if (length < 64 && (code >> length) != 0) goto fail;
+        if (unique_symbols == 1 && (length != 1 || code != 0)) goto fail;
+        int node = 0;
+        for (unsigned j = length; j > 0; j--) {
+            if (tree[node].symbol >= 0) goto fail; /* existing code is a prefix */
+            unsigned bit = (unsigned)((code >> (j - 1)) & 1u);
+            if (tree[node].child[bit] < 0) {
+                if (used >= capacity) goto fail;
+                tree[node].child[bit] = (int)used++;
+            }
+            node = tree[node].child[bit];
         }
-        uint8_t len_val = in[pos++];
-        uint32_t code_val = ((uint32_t)in[pos] << 24) | ((uint32_t)in[pos+1] << 16) | ((uint32_t)in[pos+2] << 8) | in[pos+3];
-        pos += 4;
-        
-        codebook[sym_val].code = code_val;
-        codebook[sym_val].length = len_val;
-        active_symbols[i] = sym_val;
+        if (tree[node].symbol >= 0 || tree[node].child[0] >= 0 || tree[node].child[1] >= 0)
+            goto fail; /* duplicate code or new code is a prefix */
+        tree[node].symbol = (int)symbol;
     }
+    if (unique_symbols > 1) {
+        for (size_t i = 0; i < used; i++) {
+            if (tree[i].symbol < 0 && (tree[i].child[0] < 0 || tree[i].child[1] < 0)) goto fail;
+        }
+    }
+    free(seen);
+    seen = NULL;
 
-    uint8_t *buf = calloc(orig_len + 1, 1);
-    if (!buf) { free(codebook); free(active_symbols); return TL_ERR_NOMEM; }
-
+    /* At least one bit per symbol: reject impossible counts before malloc. */
+    if ((uint64_t)sym_count > (uint64_t)(in_len - pos) * 8) goto fail;
+    buf = malloc(orig_len);
+    if (!buf) { rc = TL_ERR_NOMEM; goto fail; }
     size_t output_pos = 0;
     if (sym == SYM_S16) {
-        if (total_hdr > orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
         memcpy(buf, hdr_bytes, total_hdr);
         output_pos = total_hdr;
     }
-
+    size_t data_end = orig_len - tail_len;
     BitReader br = { .buf = in, .len = in_len, .byte_pos = pos, .bit_offset = 0 };
-    uint32_t current_code = 0;
-    int current_len = 0;
-    size_t decoded_syms = 0;
-
-    while (decoded_syms < sym_count) {
-        int bit = br_read_bit(&br);
-        if (bit == -1) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
-
-        current_code = (current_code << 1) | bit;
-        current_len++;
-
-        for (uint32_t i = 0; i < unique_symbols; i++) {
-            uint32_t s = active_symbols[i];
-            if (codebook[s].length == current_len && codebook[s].code == current_code) {
-                if (sym == SYM_BYTE) {
-                    if (output_pos >= orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
-                    buf[output_pos++] = s;
-                } else if (sym == SYM_CHAR) {
-                    if (output_pos >= orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
-                    put_char(s, buf, &output_pos);
-                } else { // SYM_S16
-                    if (output_pos + 2 > orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
-                    buf[output_pos++] = s & 0xFF;
-                    buf[output_pos++] = (s >> 8) & 0xFF;
-                }
-                decoded_syms++;
-                current_code = 0;
-                current_len = 0;
-                break;
-            }
+    for (uint32_t i = 0; i < sym_count; i++) {
+        int node = 0;
+        while (tree[node].symbol < 0) {
+            int bit = br_read_bit(&br);
+            if (bit < 0 || tree[node].child[bit] < 0) goto fail;
+            node = tree[node].child[bit];
+        }
+        uint32_t symbol = (uint32_t)tree[node].symbol;
+        size_t need = sym == SYM_CHAR ? char_bytes(symbol) : sym == SYM_S16 ? 2 : 1;
+        /* TODO 5: validate ALL bytes of the character before put_char. */
+        if (output_pos > data_end || need > data_end - output_pos) goto fail;
+        if (sym == SYM_CHAR) put_char(symbol, buf, &output_pos);
+        else {
+            buf[output_pos++] = (uint8_t)symbol;
+            if (sym == SYM_S16) buf[output_pos++] = (uint8_t)(symbol >> 8);
         }
     }
-    
-    if (sym == SYM_S16 && tail_len > 0) {
-        if (output_pos + tail_len > orig_len) { free(buf); free(codebook); free(active_symbols); return TL_ERR_DATA; }
-        memcpy(buf + output_pos, tail_bytes, tail_len);
-        output_pos += tail_len;
+    if (output_pos != data_end) goto fail;
+    /* Only 0..7 zero padding bits are allowed. Reject appended bytes too. */
+    if (br.bit_offset) {
+        unsigned mask = (1u << (8 - br.bit_offset)) - 1u;
+        if (br.byte_pos + 1 != in_len || (in[br.byte_pos] & mask)) goto fail;
+    } else if (br.byte_pos != in_len) goto fail;
+    if (sym == SYM_S16) {
+        if (tail_len) memcpy(buf + output_pos, tail_bytes, tail_len);
+        WavInfo info;
+        if (parse_wav(buf, orig_len, &info) != TL_OK || info.total_hdr != total_hdr ||
+            info.data_len != (size_t)sym_count * 2) goto fail;
     }
-
-    free(codebook); free(active_symbols);
-    if (output_pos != orig_len) { free(buf); return TL_ERR_DATA; }
-
+    free(tree);
     *out = buf;
     *out_len = orig_len;
     return TL_OK;
+fail:
+    free(tree);
+    free(seen);
+    free(buf);
+    return rc;
 }
