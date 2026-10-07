@@ -67,10 +67,11 @@
  *   下面兩行 (void)hdr; … 只是讓編譯器不要警告「參數沒用到」；開始寫之後請把它們連同 return TL_ERR_TODO 一起換掉。
  *-------------------------------------------------------------------------*/
 int frame_pack_header(uint8_t hdr[TL_HDR_LEN], uint8_t type, size_t payload_len) {
-    size_t length = payload_len + 1;
-    if (length > TL_MAX_FRAME) {
+    /* TODO 1: check BEFORE adding, including payload_len == SIZE_MAX. */
+    if (payload_len >= TL_MAX_FRAME) {
         return TL_ERR_PROTO;
     }
+    uint32_t length = (uint32_t)payload_len + 1u;
 
     hdr[0] = (uint8_t)(( (uint32_t)length >> 24 ) & 0xFF);
     hdr[1] = (uint8_t)(( (uint32_t)length >> 16 ) & 0xFF);
