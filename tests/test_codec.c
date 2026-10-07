@@ -288,6 +288,106 @@ static void test_huffman(void) {
     huff_must_reject("根本不是 WAV 的資料", (const uint8_t *)"just some text, not RIFF", 24, SYM_S16);
 }
 
+/* Regression tests for TODO 1, 4 and 5; use the public codec API. */
+static void put_be32_test(uint8_t *p, uint32_t value) {
+    for (int i = 3; i >= 0; i--) { p[i] = (uint8_t)value; value >>= 8; }
+}
+
+static void expect_bad_block(const char *name, const uint8_t *p, size_t n) {
+    uint8_t *out = NULL;
+    size_t out_len = 99;
+    int rc = huff_decode(p, n, TL_MAX_FILE, &out, &out_len);
+    report(name, 0, rc == TL_ERR_DATA && out == NULL && out_len == 0);
+    free(out);
+}
+
+static void test_regressions(void) {
+    printf("Regression: TODO 1 / 4 / 5\n");
+    uint8_t hdr[TL_HDR_LEN];
+    report("TODO1: reject SIZE_MAX before addition", 0,
+           frame_pack_header(hdr, T_FILE_DATA, SIZE_MAX) == TL_ERR_PROTO);
+    report("TODO1: accept maximum legal payload", 0,
+           frame_pack_header(hdr, T_FILE_DATA, TL_MAX_FRAME - 1) == TL_OK);
+    uint8_t *enc = NULL, *dec = NULL;
+    size_t en = 0, dn = 0;
+    int rc = huff_encode(NULL, 0, SYM_BYTE, &enc, &en);
+    report("TODO4: empty block is exactly 13 bytes", 0, rc == TL_OK && en == 13);
+    if (rc == TL_OK) {
+        uint8_t bad[21] = {0};
+        memcpy(bad, enc, 13);
+        expect_bad_block("TODO5: reject trailing bytes on empty block", bad, 21);
+        bad[8] = 1;
+        expect_bad_block("TODO5: reject nonzero count on empty block", bad, 13);
+    }
+    free(enc); enc = NULL;
+    rc = huff_encode((const uint8_t *)"AB", 2, SYM_BYTE, &enc, &en);
+    if (rc == TL_OK) {
+        uint8_t bad[128];
+        memcpy(bad, enc, en); bad[19] = bad[13];
+        expect_bad_block("TODO5: reject duplicate symbols", bad, en);
+        memcpy(bad, enc, en); memcpy(bad + 21, bad + 15, 4);
+        expect_bad_block("TODO5: reject duplicate codes", bad, en);
+        memcpy(bad, enc, en); bad[14] = 0;
+        expect_bad_block("TODO5: reject zero code length", bad, en);
+        memcpy(bad, enc, en); bad[14] = 65;
+        expect_bad_block("TODO5: reject code length above 64", bad, en);
+        memcpy(bad, enc, en); bad[18] = 2;
+        expect_bad_block("TODO5: reject bits above declared code length", bad, en);
+        memcpy(bad, enc, en); bad[20] = 2; memset(bad + 21, 0, 4);
+        expect_bad_block("TODO5: reject existing code as prefix", bad, en);
+        memcpy(bad, enc, en); bad[14] = 2; memset(bad + 21, 0, 4);
+        expect_bad_block("TODO5: reject new code as prefix", bad, en);
+        memcpy(bad, enc, en); bad[14] = bad[20] = 2; bad[24] = 2;
+        expect_bad_block("TODO5: reject incomplete Huffman tree", bad, en);
+        memcpy(bad, enc, en); bad[en - 1] |= 1;
+        expect_bad_block("TODO5: reject nonzero padding", bad, en);
+        memcpy(bad, enc, en); bad[en] = 0;
+        expect_bad_block("TODO5: reject appended byte", bad, en + 1);
+        expect_bad_block("TODO5: reject truncated bitstream", enc, en - 1);
+        memcpy(bad, enc, en); put_be32_test(bad + 5, 3);
+        expect_bad_block("TODO5: reject inconsistent symbol count", bad, en);
+    } else report("regression fixture AB", 0, 0);
+    free(enc); enc = NULL;
+
+    /* One 4-byte UTF-8 scalar with a forged orig_len. The original decoder
+     * could write four bytes into an allocation of only two bytes. */
+    rc = huff_encode((const uint8_t *)"\xF0\x9F\x98\x80", 4, SYM_CHAR, &enc, &en);
+    if (rc == TL_OK) {
+        uint8_t bad[128];
+        memcpy(bad, enc, en); put_be32_test(bad + 1, 1);
+        expect_bad_block("TODO5: check full UTF-8 character capacity", bad, en);
+        memcpy(bad, enc, en); put_be32_test(bad + 13, 0xD800);
+        expect_bad_block("TODO5: reject surrogate in codebook", bad, en);
+        memcpy(bad, enc, en); put_be32_test(bad + 13, 0x110000);
+        expect_bad_block("TODO5: reject code point above U+10FFFF", bad, en);
+    } else report("regression fixture emoji", 0, 0);
+    free(enc); enc = NULL;
+
+    /* Fibonacci frequencies force depth 33 while staying below 20 MB. */
+    uint32_t f[34] = {1, 1};
+    size_t total = 2;
+    for (int i = 2; i < 34; i++) { f[i] = f[i-1] + f[i-2]; total += f[i]; }
+    uint8_t *input = malloc(total);
+    if (!input) { report("long-code allocation", 0, 0); return; }
+    size_t pos = 0;
+    for (int i = 0; i < 34; i++) { memset(input + pos, i, f[i]); pos += f[i]; }
+    rc = huff_encode(input, total, SYM_BYTE, &enc, &en);
+    int has_long_code = 0;
+    if (rc == TL_OK) {
+        pos = 13;
+        for (int i = 0; i < 34; i++) {
+            unsigned len = enc[pos + 1];
+            if (len > 32) has_long_code = 1;
+            pos += 2 + (len <= 32 ? 4 : 8);
+        }
+    }
+    report("TODO4: actually generate a code longer than 32 bits", 0, rc == TL_OK && has_long_code);
+    if (rc == TL_OK) rc = huff_decode(enc, en, total, &dec, &dn);
+    report("TODO4/5: Fibonacci depth-33 round-trip", 0,
+           rc == TL_OK && dn == total && memcmp(input, dec, total) == 0);
+    free(input); free(enc); free(dec);
+}
+
 /* 結束碼：全部 PASS 才是 0。make 看到非 0 會顯示 Error，這是提醒還有 TODO 或 FAIL，不是 make 壞掉。
  * Windows 上先把主控台的輸出設成 UTF-8（code page 65001），中文的測試名稱才不會變成亂碼。 */
 int main(void) {
@@ -297,6 +397,7 @@ int main(void) {
     test_frame();
     test_utf8();
     test_huffman();
+    test_regressions();
     printf("\n結果：PASS %d、FAIL %d、TODO %d\n", n_pass, n_fail, n_todo);
     if (n_todo > 0) printf("TODO 的項目請到 src/frame.c、src/utf8.c、src/huffman.c 完成對應的 place holder。\n");
     return (n_fail > 0 || n_todo > 0) ? 1 : 0;
