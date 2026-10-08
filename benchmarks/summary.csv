@@ -1,0 +1,9 @@
+﻿file,mode,n,file_bytes,wire_bytes,ratio,encode_ms_mean,send_ms_mean,total_ms_mean,total_ms_sd_sample,decode_ms_mean
+text_repeat.txt,raw,5,1740000,1740177,1.0001,0.00,50.44,54.30,2.77,0.00
+text_repeat.txt,huff,5,1740000,847944,0.4873,25.88,26.84,67.94,7.69,11.12
+text_mixed.txt,raw,5,2268148,2268364,1.0001,0.00,66.60,71.18,2.56,0.00
+text_mixed.txt,huff,5,2268148,1334065,0.5882,90.00,50.70,176.24,15.26,31.16
+audio_sine.wav,raw,5,1120044,1120175,1.0001,0.00,34.68,39.14,1.69,0.00
+audio_sine.wav,huff,5,1120044,471953,0.4214,9.62,14.18,34.76,2.34,24.24
+audio_noise.wav,raw,5,1120044,1120176,1.0001,0.00,35.06,40.58,4.45,0.00
+audio_noise.wav,huff,5,1120044,1574998,1.4062,89.70,54.96,185.00,27.97,94.28
