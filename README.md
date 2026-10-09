@@ -1,4 +1,89 @@
-# TextLink starter：會動的殼＋五個 place holder
+# TextLink — TCP 聊天與檔案傳輸系統
+
+TextLink 是使用 C 語言開發的命令列 TCP 通訊程式，支援 UTF-8 文字聊天、TXT/WAV 檔案傳輸，以及 RAW（不壓縮）與 Huffman（壓縮）兩種傳輸模式。
+
+## 專案完成狀態
+
+已完成 Frame Header 封裝與解析、UTF-8 合法性驗證、Huffman 編碼與解碼，以及聊天與檔案傳輸功能。
+
+### 測試驗證結果
+
+| 驗證項目 | 結果 |
+|---|---|
+| C 單元測試 | **114 PASS、0 FAIL、0 TODO** |
+| TCP 異常封包測試 | 4 項情境已驗證 |
+| 效能量測 | 4 種檔案 × 2 種模式 × 5 次，共 40 筆 |
+| 檔案完整性 | 已使用逐 byte 比對驗證 |
+| 雙機 TCP 連線 | 已與組員進行測試 |
+
+## 編譯與測試
+
+Windows PowerShell：
+
+```powershell
+mingw32-make
+mingw32-make test
+```
+
+測試成功應顯示：
+
+```text
+結果：PASS 114、FAIL 0、TODO 0
+```
+
+## TCP 異常封包測試
+
+第一個終端機啟動接收端：
+
+```powershell
+.\textlink.exe recv 5000 out
+```
+
+第二個終端機執行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TCP-01
+```
+
+可將 `TCP-01` 改成 `TCP-02`、`TCP-03` 或 `TCP-04`，每次測試前需重新啟動接收端。
+
+四種測試情境包括不完整 Header、不完整 Payload、超過 16 MiB 的 Frame，以及未知 Frame Type。接收端均能回報失敗；其中 TCP-02 尚未獨立確認錯誤發生的確切階段。
+
+## RAW 與 Huffman 效能比較
+
+效能測試在 `127.0.0.1` 本機環境進行，每種檔案在 RAW 與 Huffman 模式下各測試五次。
+
+| 測試檔案 | 大小（bytes） | Huffman 傳輸比例 |
+|---|---:|---:|
+| `text_repeat.txt` | 1,740,000 | 48.73% |
+| `text_mixed.txt` | 2,268,148 | 58.82% |
+| `audio_sine.wav` | 1,120,044 | 42.14% |
+| `audio_noise.wav` | 1,120,044 | 140.62% |
+
+測試結果顯示，Huffman 對重複性高的文字與規律音訊具有良好的壓縮效果；但對高熵雜訊資料，壓縮後可能比 RAW 傳輸更大。
+
+效能資料中的 `total_ms` 為傳送端總耗時，不代表端對端傳輸延遲。
+
+## 測試資料與相關文件
+
+- [測試驗證報告](docs/testing.md)
+- [驗證檢查表](docs/verification_checklist.md)
+- [介面文件](docs/interface.md)
+- [效能測試說明](benchmarks/README.md)
+- [效能原始數據](benchmarks/raw_results.csv)
+- [效能中位數](benchmarks/median_results.csv)
+- [效能摘要](benchmarks/summary.csv)
+- [Benchmark 自動化腳本](benchmarks/run_benchmark.ps1)
+- [TCP 異常封包測試腳本](tests/test_tcp_malformed.ps1)
+- [四種測試檔案](benchmark_files/)
+
+---
+
+## 原始 Starter 操作說明
+
+以下保留原始 Starter 的教學內容作為參考，部分 TODO 數量與測試數字屬於初始版本，請以上方最新驗證結果為準。
+
+### TextLink starter：會動的殼＋五個 place holder
 
 規格在上一層的 [../README.md](../README.md)。這個資料夾是一支**已經符合規格的命令列介面、網路連線、
 聊天畫面、檔案傳輸流程與 `STATS` 輸出**的 C 程式，由 [../baseline/chat.c](../baseline/chat.c) 改寫延伸而來；
