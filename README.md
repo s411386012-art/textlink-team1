@@ -423,6 +423,8 @@ textlink-team1/
 - [Benchmark 量測腳本](benchmarks/run_benchmark.ps1)
 - [TCP 異常輸入測試腳本](tests/test_tcp_malformed.ps1)
 - [正式四種測試資料](benchmark_real/)
+- [Huffman 壓縮率分析報告](docs/compression_report.md)
+- [Huffman 壓縮分析 Excel](benchmarks/TextLink_Huffman_Compression_Analysis.xlsx)
 
 ### 團隊與繳交文件
 
