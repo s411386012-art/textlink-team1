@@ -1,4 +1,13 @@
-﻿# TextLink — V（測試驗證）提交資料
+﻿> **文件定位：V 角色工作交接紀錄**
+>
+> 本文件保留測試驗證角色原先的工作範圍、
+> 資料交接要求與提交注意事項。
+>
+> 最新的專案完成狀態請以根目錄 README.md 為準；
+> 詳細測試結果請參閱 docs/testing.md；
+> Huffman 壓縮分析請參閱 docs/compression_report.md。
+
+# TextLink — V（測試驗證）提交資料
 
 本資料包只包含 **V 角色的附加文件與數據**，請合併到既有 team repo，**不要覆蓋組員的 src/、include/、tests/、Makefile、README.md**。
 
