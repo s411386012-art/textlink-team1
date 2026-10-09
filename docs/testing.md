@@ -237,6 +237,47 @@ cmd /c fc /b tests\edge_files\audio_8bit.wav out\audio_8bit.wav
 
 本測試屬於 localhost 整合測試，不等同於記憶體安全性檢測，也不代表所有可能的惡意輸入均已涵蓋。
 
+### TCP-07：損壞 Huffman Codebook 整合測試（2026-10-09）
+
+**測試目的：** 驗證接收端遇到非法 Huffman Codebook 時，能拒絕解碼、不產生錯誤輸出檔案，並回傳失敗狀態與非零結束碼。
+
+**測試環境：** Windows PowerShell、TCP Loopback `127.0.0.1:5000`。
+
+**測試工具：** `tests/test_tcp_bad_codebook.py`
+
+測試腳本產生一份包含無效 Codebook 的 Huffman 資料，其中符號 `A` 的編碼長度被設定為 0，並透過 `FILE_BEGIN`、`FILE_DATA`、`FILE_END` 傳送至 TextLink 接收端。
+
+| 驗證項目 | 實際結果 |
+|---|---|
+| Huffman 資料大小 | 20 bytes |
+| 宣告原始大小 | 1 byte |
+| 接收端錯誤 | 資料內容不合法 |
+| 回覆 Frame Type | `0x12`（FILE_END） |
+| 回覆 Payload | `01`（失敗） |
+| 輸出檔案 | 未產生 |
+| 接收端結束碼 | 1 |
+| 判定 | PASS |
+
+**重現方式：**
+
+接收端：
+
+```powershell
+.\textlink.exe recv 5000 out
+```
+
+測試端：
+
+```powershell
+py .\tests\test_tcp_bad_codebook.py
+```
+
+接收端執行完成後，可使用 `$LASTEXITCODE` 確認結束碼。
+
+**結論：** 接收端正確拒絕本次損壞的 Huffman Codebook，回覆失敗 ACK（`FILE_END`、Payload=`01`），沒有產生輸出檔案，並以結束碼 1 正常結束。測試未發現程式崩潰。
+
+本案例屬於協定及解碼錯誤處理的整合驗證，不等同於使用記憶體分析工具證明完全沒有越界讀寫。
+
 ## 4. 正式 Benchmark 測試資料
 
 ### 4.1 資料集
