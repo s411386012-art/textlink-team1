@@ -200,7 +200,7 @@ mingw32-make test
 
 **114 PASS、0 FAIL、0 TODO**
 
-### 7.2 TCP 異常封包測試
+### 7.2 TCP 通訊與異常封包測試
 
 測試腳本：`tests/test_tcp_malformed.ps1`
 
@@ -228,6 +228,14 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 接收端能回報相應的接收失敗情況。這些測試仍需依實際接收端輸出判讀，不能只因測試腳本成功送出資料就視為測試通過。
 
 詳細紀錄請參閱 [測試驗證報告](docs/testing.md)。
+
+此外，本專案另進行以下本機 TCP 驗證：
+
+- TCP-05：將多個 Frame 拆成多次 TCP 寫入，確認接收端能正確重組。
+- TCP-06：將多個 Frame 合併為一次 TCP 寫入，確認接收端能依 Frame 邊界正確解析。
+- TCP-07：傳送包含異常 Huffman Codebook 的資料，確認接收端能拒絕錯誤編碼。
+
+上述測試均已完成本機驗證，詳細測試方式、接收端結果及檔案完整性檢查請參閱 [測試驗證報告](docs/testing.md)。
 
 ## 8. 正式 Benchmark 效能量測
 
@@ -336,6 +344,17 @@ Huffman 的傳輸比例達 140.62%，顯示高熵音訊資料不一定適合使�
 - [正式 Benchmark Excel](benchmarks/formal_benchmark_40.xlsx)
 - [Benchmark 方法與資料說明](benchmarks/README.md)
 
+### 8.7 Huffman 壓縮率與理論分析
+
+除正式 Benchmark 外，本專案另外計算 Shannon Entropy（H）、Huffman 平均碼長（L）、Codebook 大小及純 Bitstream 比例，並比較中文、英文的 CHAR/BYTE，以及 WAV 的 S16/BYTE 編碼效果。
+
+根據正式測試資料建立的簡化模型，中文與英文文章的理論損益平衡頻寬分別約為 **172.70 Mbps** 與 **73.59 Mbps**。上述數值為理論估計，尚未經不同頻寬的實際網路測試驗證。
+
+完整數據、計算公式及分析結論請參閱：
+
+- [Huffman 壓縮率完整分析報告](docs/compression_report.md)
+- [Huffman 壓縮分析 Excel](benchmarks/TextLink_Huffman_Compression_Analysis.xlsx)
+
 ## 9. 資料分布分析
 
 除 RAW/HUFF 傳輸比較外，本專案另提供：
@@ -358,43 +377,88 @@ Huffman 的傳輸比例達 140.62%，顯示高熵音訊資料不一定適合使�
 
 ```text
 textlink-team1/
-├── src/                         C 程式實作
-│   ├── main.c
-│   ├── net.c
-│   ├── frame.c
-│   ├── utf8.c
-│   ├── huffman.c
-│   ├── chat.c
-│   └── transfer.c
-├── include/                     Header 檔
+│
+├── src/                                  # C 程式主要實作
+│   ├── main.c                            # 主程式與命令列參數處理
+│   ├── net.c                             # TCP 網路連線
+│   ├── frame.c                           # Frame 封裝與解析
+│   ├── utf8.c                            # UTF-8 驗證
+│   ├── huffman.c                         # Huffman 編碼與解碼
+│   ├── chat.c                            # TCP 聊天功能
+│   └── transfer.c                        # RAW/HUFF 檔案傳輸
+│
+├── include/                              # C Header 檔案
 │   ├── platform.h
 │   └── textlink.h
-├── tests/
-│   ├── test_codec.c
-│   ├── test_tcp_malformed.ps1
-│   └── make_samples.py
-├── benchmark_real/              正式驗收測試資料
-├── benchmarks/
-│   ├── formal_raw_40.csv
-│   ├── formal_medians.csv
-│   ├── formal_benchmark_40.xlsx
-│   ├── run_benchmark.ps1
-│   ├── char_frequency.py
-│   ├── wav_histogram.py
-│   ├── figures/
-│   └── README.md
-├── docs/
-│   ├── interface.md
-│   ├── testing.md
-│   ├── verification_checklist.md
-│   └── report_data_requirements.md
-├── Makefile
-├── README.md
-├── TEAM_LOG.md
-├── CONTRIBUTIONS.md
-├── AI_USAGE.md
-└── slides.pdf                    正式報告，完成後放入
+│
+├── tests/                                # 單元測試與異常測試
+│   ├── test_codec.c                      # C 單元測試
+│   ├── test_tcp_malformed.ps1            # TCP 異常封包測試
+│   ├── test_tcp_stream.ps1               # TCP 拆包／黏包測試
+│   ├── test_tcp_bad_codebook.py          # Huffman 異常 Codebook 測試
+│   ├── dump_huffman.c                    # 匯出 C Huffman 實際編碼資料
+│   ├── make_samples.py                   # 測試檔案產生工具
+│   └── edge_files/                       # Huffman 邊界測試資料
+│
+├── benchmark_real/                       # 四份正式 Benchmark 資料
+│   ├── real_chinese.txt                  # 中文自然語言測試資料
+│   ├── real_english.txt                  # 英文自然語言測試資料
+│   ├── audio_music_20s.wav               # 20 秒 16-bit PCM 音樂
+│   └── audio_noise.wav                   # 16-bit PCM 雜訊
+│
+├── benchmarks/                           # 效能量測與壓縮分析
+│   ├── README.md                         # Benchmark 執行說明
+│   ├── run_benchmark.ps1                 # 正式傳輸效能量測腳本
+│   ├── formal_raw_40.csv                 # 40 次正式量測原始資料
+│   ├── formal_medians.csv                # 正式量測中位數
+│   ├── formal_benchmark_40.xlsx          # 正式 Benchmark Excel
+│   │
+│   ├── char_frequency.py                 # 文字字元頻率分析
+│   ├── wav_histogram.py                  # WAV Sample Histogram
+│   │
+│   ├── compression_analysis.py           # 符號 N、K、Shannon Entropy H
+│   ├── compression_codebook.py           # 平均碼長 L 與 Codebook 分析
+│   ├── analyze_encoded.py                # 解析 C Huffman 實際編碼結果
+│   ├── chat_compression_analysis.py      # 聊天短訊息壓縮率分析
+│   ├── break_even_analysis.py            # 理論損益平衡頻寬計算
+│   │
+│   ├── TextLink_Huffman_Compression_Analysis.xlsx
+│   │                                       # Huffman 壓縮分析 Excel
+│   │
+│   └── figures/                          # 分析數據與圖表
+│       ├── real_chinese_top30.csv        # 中文前 30 常見字元
+│       ├── real_english_top30.csv        # 英文前 30 常見字元
+│       ├── audio_music_histogram.csv     # 音樂 WAV Sample 分布
+│       ├── compression_entropy.csv       # 八組符號的 H 與統計資料
+│       ├── compression_codebook.csv      # L 與 Codebook 計算
+│       ├── compression_actual.csv        # C 編碼器實際壓縮結果
+│       ├── chat_compression.csv          # 不同聊天長度的壓縮比例
+│       └── break_even.csv                # 理論損益平衡頻寬
+│
+├── docs/                                 # 專案技術與驗證文件
+│   ├── interface.md                      # 通訊協定與介面規格
+│   ├── testing.md                        # 測試與驗收結果
+│   ├── compression_report.md             # Huffman 壓縮率完整分析
+│   ├── verification_checklist.md         # 驗收項目清單
+│   └── report_data_requirements.md       # 報告資料需求
+│
+├── Makefile                              # 專案編譯與測試
+├── README.md                             # 專案說明與操作指南
+├── TEAM_LOG.md                           # 團隊開發紀錄
+├── CONTRIBUTIONS.md                      # 成員貢獻紀錄
+├── AI_USAGE.md                           # AI 使用紀錄
+└── slides.pdf                            # 最終口頭報告簡報（待完成）
 ```
+
+**補充說明**
+
+- `src/` 與 `include/` 存放 TextLink 的主要 C 程式與介面定義。
+- `tests/` 包含單元測試、TCP 異常封包測試、拆包／黏包驗證及 Huffman 邊界測試。
+- `benchmark_real/` 存放四份正式測試資料。
+- `benchmarks/` 存放 RAW/HUFF 效能量測結果，以及 Huffman 熵、平均碼長、Codebook 和損益平衡頻寬分析程式。
+- `benchmarks/figures/` 保存分析產生的 CSV 資料及相關統計結果。
+- `docs/compression_report.md` 為 Huffman 壓縮率完整報告，詳細說明計算公式、實驗結果與分析結論。
+- `slides.pdf` 為最終口頭報告繳交檔案，完成後放置於 Repository 根目錄。
 
 ## 11. 團隊分工
 
