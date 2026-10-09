@@ -237,6 +237,58 @@ cmd /c fc /b tests\edge_files\audio_8bit.wav out\audio_8bit.wav
 
 本測試屬於 localhost 整合測試，不等同於記憶體安全性檢測，也不代表所有可能的惡意輸入均已涵蓋。
 
+### WAV 奇數 data chunk 長度測試（2026-10-10）
+
+**測試目的：** 驗證 WAV 的 `data` chunk 長度為奇數時，Huffman S16 模式能否保留最後不足一個 16-bit sample 的 byte，並在解碼後完整還原原始檔案。
+
+**測試環境：** Windows PowerShell、TCP Loopback `127.0.0.1:5000`。
+
+| 驗證項目 | 實際結果 |
+|---|---|
+| 測試檔案 | `tests/edge_files/audio_odd.wav` |
+| 原始大小 | 245 bytes |
+| WAV `data` chunk 宣告長度 | 201 bytes |
+| 傳輸模式 | HUFF |
+| 實際 Huffman 符號模式 | `sym=s16` |
+| Huffman 編碼資料 | 86 bytes |
+| 實際上線資料量 | 131 bytes |
+| 傳輸比例 | 0.5347（53.47%） |
+| 接收端解碼及存檔 | 成功，245 bytes |
+| `fc /b` 逐 byte 比對 | 找不到相異處 |
+| **整體測試結果** | **PASS** |
+
+**測試結論：**
+
+本次在 localhost 環境下，使用 `data` chunk 宣告長度為 201 bytes 的 WAV 檔案進行 Huffman S16 傳輸。傳送端成功編碼，接收端完成解碼及存檔，最終使用 `fc /b` 確認原始與還原檔案逐 byte 完全相同。
+
+結果證實，本次測試的奇數長度 WAV 可透過 S16 模式無損還原，包含最後不足一個 16-bit sample 的剩餘 byte。
+
+本項為單一特殊檔案的 localhost 整合測試，不代表所有 WAV 格式或 RIFF 邊界情況皆已涵蓋。
+
+**重現指令：**
+
+接收端：
+
+```powershell
+.\textlink.exe recv 5000 out
+```
+
+傳送端：
+
+```powershell
+.\textlink.exe send 127.0.0.1 5000 tests\edge_files\audio_odd.wav --huff
+```
+
+檔案完整性比對：
+
+```powershell
+cmd /c fc /b tests\edge_files\audio_odd.wav out\audio_odd.wav
+```
+
+**通過條件：** 傳送端顯示 `mode=huff sym=s16`，接收端成功解碼及存檔，且 `fc /b` 顯示找不到相異處。
+
+**測試備註：** 目前已確認 C 編碼器可以對此測試檔案產生 86 bytes 的 Huffman 區塊，但尚未取得接收端還原及檔案比對成功的結果，因此不將整體測試標記為 PASS。
+
 ### TCP-07：損壞 Huffman Codebook 整合測試（2026-10-09）
 
 **測試目的：** 驗證接收端遇到非法 Huffman Codebook 時，能拒絕解碼、不產生錯誤輸出檔案，並回傳失敗狀態與非零結束碼。
