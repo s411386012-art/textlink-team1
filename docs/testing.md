@@ -278,6 +278,37 @@ py .\tests\test_tcp_bad_codebook.py
 
 本案例屬於協定及解碼錯誤處理的整合驗證，不等同於使用記憶體分析工具證明完全沒有越界讀寫。
 
+### STATS 格式與程式結束碼驗證（2026-10-09）
+
+**測試環境：** Windows PowerShell、TCP Loopback `127.0.0.1:5000`。
+
+**測試檔案：** `benchmark_real/real_chinese.txt`，原始大小為 1,200,335 bytes。
+
+本次分別執行 RAW 與 HUFF 傳輸，確認傳送端、接收端的 `STATS` 欄位、資料一致性及成功結束碼；另使用 TCP-07 損壞 Huffman Codebook 測試驗證失敗結束碼。
+
+| 驗證項目 | RAW | HUFF |
+|---|---:|---:|
+| `file_bytes` | 1,200,335 | 1,200,335 |
+| `wire_bytes` | 1,200,473 | 388,786 |
+| `ratio` | 1.0001 | 0.3239 |
+| 傳送端 `sym` | none | char |
+| 傳送端 `encode_ms` | 0.0 | 28.8 |
+| 傳送端 `send_ms` | 37.9 | 11.3 |
+| 傳送端 `total_ms` | 41.0 | 52.8 |
+| 接收端 `decode_ms` | 0.0 | 9.4 |
+| 接收端 `total_ms` | 40.3 | 23.3 |
+| 傳送端結束碼 | 0 | 0 |
+| 接收端結束碼 | 0 | 0 |
+| 判定 | PASS | PASS |
+
+本表為額外功能驗證的單次測試結果，不納入正式 40 次 Benchmark 的中位數統計。
+
+**失敗結束碼驗證：**
+
+在 TCP-07 測試中，接收端成功辨識損壞的 Huffman Codebook，回覆 `FILE_END` 失敗狀態（Payload `01`），沒有產生輸出檔案，並以結束碼 1 結束。
+
+**結論：** 本次 RAW/HUFF 傳輸均正常輸出指定的 STATS 欄位，成功時兩端回傳結束碼 0；故意提供損壞 Huffman Codebook 時，接收端回傳失敗狀態及非零結束碼。資料比例與 `wire_bytes / file_bytes` 的計算一致。
+
 ## 4. 正式 Benchmark 測試資料
 
 ### 4.1 資料集
