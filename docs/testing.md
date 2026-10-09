@@ -135,6 +135,45 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 - 本次未搭配 AddressSanitizer 或其他記憶體分析工具。
 - 此四項 TCP 測試不包含在 114 項離線單元測試的數量內。
 
+### TCP-05／TCP-06：TCP 半包與黏包測試
+
+**測試環境：** Windows PowerShell、TCP Loopback `127.0.0.1:5000`。
+
+使用 `tests/test_tcp_stream.ps1` 產生符合 TextLink 協定的 `FILE_BEGIN`、`FILE_DATA`、`FILE_END` Frame，測試接收端對分段與連續 TCP 串流的處理能力。
+
+| 測試編號 | 測試方式 | 測試結果 |
+|---|---|---|
+| TCP-05 | 將 5 個 Frame、合計 4,155 bytes 拆成 385 次 TCP 寫入 | 成功接收 4,096 bytes、收到成功 ACK，`fc /b` 無差異 |
+| TCP-06 | 將 5 個 Frame、合計 4,155 bytes 合併為一次 TCP 寫入 | 成功接收 4,096 bytes、收到成功 ACK，`fc /b` 無差異 |
+
+**重現指令：**
+
+接收端（每次重新啟動）：
+
+```powershell
+.\textlink.exe recv 5000 out
+```
+
+測試端：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_stream.ps1 -Case TCP-05
+powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_stream.ps1 -Case TCP-06
+```
+
+每個案例分別執行，不可在同一個接收端程序中連續執行。
+
+**檔案完整性驗證：**
+
+```powershell
+cmd /c fc /b "$env:TEMP\tcp_stream_05.bin" out\tcp_stream_05.bin
+cmd /c fc /b "$env:TEMP\tcp_stream_06.bin" out\tcp_stream_06.bin
+```
+
+兩項測試均顯示「FC: 找不到相異處」。
+
+**測試結論：** TextLink 接收端能正確處理本次分段寫入與連續 Frame 串流，並完整還原資料。此測試未直接記錄底層 `recv()` 的實際分段邊界，因此不宣稱涵蓋所有 TCP 封包切分情況。
+
 ## 4. 正式 Benchmark 測試資料
 
 ### 4.1 資料集
