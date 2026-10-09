@@ -25,6 +25,15 @@
  *===========================================================================*/
 #include "textlink.h"
 
+/*只在 Windows 環境下生效.
+如果編譯器沒有定義這個常數，就補上 Windows API 使用的值 0x0004.
+如果原本已經定義，就不重複定義。*/
+#ifdef _WIN32
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
+#endif
+
 /* 讓 Windows 的 cmd／PowerShell 認得 ANSI 色碼，並用 UTF-8 輸出中文
  *
  * 【static 函式】函式前面加 static，表示「只有這個 .c 檔看得到」：別的檔案不能呼叫它，
