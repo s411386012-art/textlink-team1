@@ -388,6 +388,97 @@ static void test_regressions(void) {
     free(input); free(enc); free(dec);
 }
 
+/* V-role additions: API contract boundary and malformed-input tests. */
+static void test_v_boundaries(void) {
+    uint8_t hdr[TL_HDR_LEN] = {0};
+    uint8_t type = 0;
+    size_t n = 0;
+    int rc;
+
+    printf("V verification: additional boundaries\n");
+
+    rc = frame_pack_header(hdr, T_TEXT_RAW, 0);
+    report("V frame: zero-byte payload encodes length=1", 0,
+           rc == TL_OK && hdr[0] == 0 && hdr[1] == 0 &&
+           hdr[2] == 0 && hdr[3] == 1 && hdr[4] == T_TEXT_RAW);
+
+    rc = frame_pack_header(hdr, T_FILE_DATA, TL_MAX_FRAME - 1);
+    report("V frame: maximum legal payload encodes 0x01000000", 0,
+           rc == TL_OK && hdr[0] == 1 && hdr[1] == 0 &&
+           hdr[2] == 0 && hdr[3] == 0 && hdr[4] == T_FILE_DATA);
+    if (rc == TL_OK) {
+        uint8_t parsed_type = 0;
+        size_t parsed_n = 0;
+        rc = frame_parse_header(hdr, &parsed_type, &parsed_n);
+        report("V frame: parse maximum legal frame", 0,
+               rc == TL_OK && parsed_type == T_FILE_DATA &&
+               parsed_n == TL_MAX_FRAME - 1);
+    } else {
+        report("V frame: parse maximum legal frame", 0, 0);
+    }
+
+    {
+        const uint8_t length_one[TL_HDR_LEN] = {0, 0, 0, 1, T_TEXT_RAW};
+        rc = frame_parse_header(length_one, &type, &n);
+        report("V frame: parse length=1 as empty payload", 0,
+               rc == TL_OK && type == T_TEXT_RAW && n == 0);
+    }
+    {
+        const uint8_t too_large[TL_HDR_LEN] = {1, 0, 0, 1, T_TEXT_RAW};
+        rc = frame_parse_header(too_large, &type, &n);
+        report("V frame: reject 16MiB+1 length", 0, rc == TL_ERR_PROTO);
+    }
+    {
+        const uint8_t embedded_nul[] = {'A', 0, 'B'};
+        report("V UTF-8: embedded NUL is valid UTF-8", 0,
+               utf8_validate(embedded_nul, sizeof(embedded_nul)) == TL_OK);
+    }
+    {
+        const uint8_t bad_after_nul[] = {'A', 0, 0xC0, 0x80};
+        report("V UTF-8: invalid bytes after NUL must be checked", 0,
+               utf8_validate(bad_after_nul, sizeof(bad_after_nul)) == TL_ERR_DATA);
+    }
+    {
+        const uint8_t truncated_four[] = {0xF0, 0x9F, 0x98};
+        report("V UTF-8: truncated 4-byte sequence", 0,
+               utf8_validate(truncated_four, sizeof(truncated_four)) == TL_ERR_DATA);
+    }
+    {
+        const uint8_t valid[] = {'A', 'B'};
+        uint8_t *encoded = NULL;
+        size_t encoded_len = 0;
+        rc = huff_encode(valid, sizeof(valid), SYM_BYTE, &encoded, &encoded_len);
+        if (rc != TL_OK || encoded == NULL) {
+            report("V Huffman: prepare valid fixture", rc == TL_ERR_TODO, 0);
+            free(encoded);
+        } else {
+            size_t bad_prefixes = 0;
+            size_t limit = encoded_len < 13 ? encoded_len : 13;
+            for (size_t k = 0; k < limit; ++k) {
+                uint8_t *decoded = NULL;
+                size_t decoded_len = 0;
+                int drc = huff_decode(encoded, k, TL_MAX_FILE,
+                                      &decoded, &decoded_len);
+                if (drc == TL_ERR_DATA && decoded == NULL && decoded_len == 0)
+                    bad_prefixes++;
+                free(decoded);
+            }
+            report("V Huffman: reject every truncated fixed header prefix", 0,
+                   limit == 13 && bad_prefixes == limit);
+            {
+                uint8_t *decoded = NULL;
+                size_t decoded_len = 0;
+                int drc = huff_decode(encoded, encoded_len, 0,
+                                      &decoded, &decoded_len);
+                report("V Huffman: reject output when max_out=0", 0,
+                       drc == TL_ERR_DATA && decoded == NULL && decoded_len == 0);
+                free(decoded);
+            }
+            free(encoded);
+        }
+    }
+}
+
 /* 結束碼：全部 PASS 才是 0。make 看到非 0 會顯示 Error，這是提醒還有 TODO 或 FAIL，不是 make 壞掉。
  * Windows 上先把主控台的輸出設成 UTF-8（code page 65001），中文的測試名稱才不會變成亂碼。 */
 int main(void) {
@@ -398,6 +489,7 @@ int main(void) {
     test_utf8();
     test_huffman();
     test_regressions();
+    test_v_boundaries();
     printf("\n結果：PASS %d、FAIL %d、TODO %d\n", n_pass, n_fail, n_todo);
     if (n_todo > 0) printf("TODO 的項目請到 src/frame.c、src/utf8.c、src/huffman.c 完成對應的 place holder。\n");
     return (n_fail > 0 || n_todo > 0) ? 1 : 0;
