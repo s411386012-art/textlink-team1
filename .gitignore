@@ -69,3 +69,11 @@ dkms.conf
 /benchmarks/summary.csv
 
 /benchmark_real/audio_music.wav
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated Huffman analysis files
+benchmarks/encoded/
+dump_huffman.exe
