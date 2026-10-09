@@ -108,6 +108,75 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 
 腳本僅負責發送測試資料，是否 PASS 須觀察終端機 A 的接收端訊息。
 
+## 量測腳本重現驗證（Benchmark Reproducibility）
+
+### 測試目的
+
+確認 `benchmarks/run_benchmark.ps1` 能夠在 Windows PowerShell 環境下正常執行 RAW 與 Huffman 傳輸，記錄傳送端的 `STATS`，並驗證接收檔案與原始檔案一致。
+
+### 測試環境
+
+- 作業系統：Windows
+- 終端機：Windows PowerShell
+- 網路環境：本機 TCP Loopback（`127.0.0.1:5000`）
+- 測試程式：`textlink.exe`
+- 測試檔案：`benchmark_files/text_repeat.txt`
+- 原始檔案大小：1,740,000 bytes
+- 測試編號：Trial 99（額外重現測試，不納入原始 40 次統計）
+
+### 測試步驟
+
+1. 編譯程式：`mingw32-make`。
+2. 在第一個 PowerShell 終端機執行 `.\textlink.exe recv 5000 out`。
+3. 在第二個終端機執行 RAW 量測腳本：
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\benchmarks\run_benchmark.ps1 -File benchmark_files\text_repeat.txt -Mode raw -Trial 99
+   ```
+
+4. RAW 完成後重新啟動接收端，再執行 HUFF 量測：
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\benchmarks\run_benchmark.ps1 -File benchmark_files\text_repeat.txt -Mode huff -Trial 99
+   ```
+
+5. 分別確認 Log 中有 `STATS role=send`，並執行以下指令比對檔案：
+
+   ```powershell
+   cmd /c fc /b benchmark_files\text_repeat.txt out\text_repeat.txt
+   ```
+
+### 測試結果
+
+| 項目 | RAW | HUFF |
+|---|---:|---:|
+| 原始檔案大小（bytes） | 1,740,000 | 1,740,000 |
+| 傳輸位元組數（wire_bytes） | 1,740,177 | 847,944 |
+| 傳輸比例（ratio） | 1.0001 | 0.4873 |
+| 編碼時間（encode_ms） | 0.0 ms | 24.4 ms |
+| 傳送時間（send_ms） | 29.0 ms | 14.3 ms |
+| 傳送端總耗時（total_ms） | 47.7 ms | 69.9 ms |
+| 傳送端 Log | 成功保存 | 成功保存 |
+| 檔案逐 byte 比對 | PASS | PASS |
+
+接收端 HUFF 解碼時間為 14.5 ms。
+
+兩種模式均成功傳送並還原檔案，`fc /b` 顯示「找不到相異處」，證明傳輸後檔案內容與原始資料一致。
+
+### PowerShell 相容性修正
+
+首次重現時，量測腳本因 Windows PowerShell 對原生程式 stderr 的處理方式而出現 `NativeCommandError`。
+
+TextLink 的 `STATS` 原本即輸出至 stderr，並不代表傳輸失敗。修正腳本的錯誤處理後，RAW 與 HUFF 均可正常執行，且能將傳送端輸出保存至 `benchmarks/logs/`。
+
+### 結論
+
+本次重現驗證確認量測腳本可以正常執行、保留傳送端統計資訊，並搭配檔案比對驗證資料完整性。
+
+Huffman 模式將本次測試的上線傳輸量降低約 51.27%，但傳送端總耗時高於 RAW，反映壓縮處理所需的額外成本。
+
+本次 Trial 99 僅用於驗證測試流程的可重現性，不取代原先 40 次正式效能量測結果。`total_ms` 為傳送端量測值，不代表端對端傳輸延遲。
+
 ## 6. 提交前待辦
 
 - [x] 新增 10 項 V 邊界與壞輸入測試，並取得 `114 PASS、0 FAIL、0 TODO`。
