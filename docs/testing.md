@@ -83,6 +83,31 @@ cmd /c fc /b benchmark_files\text_repeat.txt out\text_repeat.txt
 - 目前數據不能直接推斷資料熵與編碼耗時的因果關係，只能提出合理解釋。
 - 上表壓縮比例沿用 STATS 的 `wire_bytes / file_bytes` 定義，並非以 RAW `wire_bytes` 為分母的流量節省百分比。
 
+## TCP 異常封包與中途斷線整合測試（2026-10-09）
+
+測試環境：Windows PowerShell、TextLink `recv 5000 out`、localhost `127.0.0.1:5000`。使用 `tests/test_tcp_malformed.ps1` 產生異常 TCP 輸入；每個案例均重新啟動接收端。以下結果來自人工執行時的終端機觀察，**不是腳本自動判定**。
+
+| 編號 | 輸入內容 | 接收端實際訊息 | 結果 |
+|---|---|---|---|
+| TCP-01 | 僅送出 2 bytes Header，立即斷線 | 接收失敗；沒有產生輸出檔；對方已關閉連線 | PASS：異常連線安全失敗 |
+| TCP-02 | Header 宣告 Length=11、Type=0x01，實際只送 3/10 bytes Payload 後斷線 | 接收失敗；沒有產生輸出檔；對方已關閉連線 | PASS：接收端安全失敗；尚未確認失敗是否發生在 Payload 讀取階段 |
+| TCP-03 | Header 宣告 Length=`0x01000001`，超過 16 MiB 上限 | 接收失敗；沒有產生輸出檔；收到不合規格的封包 | PASS：拒絕超長 Frame |
+| TCP-04 | Header Length=1（合法），Type=`0xFF`（未知） | 接收失敗；沒有產生輸出檔；收到不合規格的封包 | PASS：接收流程拒絕未知 Type |
+
+**限制：** 四項測試均在本機 loopback 執行，不代表雙機網路壓力測試；沒有使用記憶體分析工具驗證記憶體安全性。TCP-02 的封包 Type=0x01，若要確認確實執行到 Payload 讀取階段，需搭配 `src/transfer.c` 的實作流程檢查。這四項整合測試與 `mingw32-make test` 的 114 項單元測試分開統計。
+
+重現方式：
+
+```powershell
+# 終端機 A（每次測試重新啟動）
+.\textlink.exe recv 5000 out
+
+# 終端機 B（依序替換 TCP-01 ~ TCP-04）
+powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TCP-01
+```
+
+腳本僅負責發送測試資料，是否 PASS 須觀察終端機 A 的接收端訊息。
+
 ## 6. 提交前待辦
 
 - [x] 新增 10 項 V 邊界與壞輸入測試，並取得 `114 PASS、0 FAIL、0 TODO`。
