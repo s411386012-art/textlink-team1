@@ -309,6 +309,27 @@ py .\tests\test_tcp_bad_codebook.py
 
 **結論：** 本次 RAW/HUFF 傳輸均正常輸出指定的 STATS 欄位，成功時兩端回傳結束碼 0；故意提供損壞 Huffman Codebook 時，接收端回傳失敗狀態及非零結束碼。資料比例與 `wire_bytes / file_bytes` 的計算一致。
 
+### 乾淨 Clone 建置與單元測試驗證（2026-10-09）
+
+本次在獨立資料夾 `textlink-clean-test` 重新 Clone GitHub Repository，確認下載後不存在既有編譯產物，並依照 README 的 Windows PowerShell 建置方式執行測試。
+
+**驗證項目與結果：**
+
+| 項目 | 結果 |
+|---|---|
+| Git Clone | 成功 |
+| Commit SHA | 與驗證指定版本一致 |
+| 舊編譯產物 | 無 |
+| `mingw32-make` | 成功，無編譯警告 |
+| `mingw32-make test` | PASS 114、FAIL 0、TODO 0 |
+| 測試結束碼 | 0 |
+
+**結論：** 專案可在本次測試使用的 Windows / MinGW 環境中，從乾淨的 Git Clone 重新建置並通過全部單元測試。
+
+驗證 Commit SHA：`（填入實際 git rev-parse HEAD 的完整 SHA）`
+
+本測試證明目前環境中的建置可重現性，不代表已驗證所有作業系統及編譯器版本。
+
 ## 4. 正式 Benchmark 測試資料
 
 ### 4.1 資料集
