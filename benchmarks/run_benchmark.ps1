@@ -1,5 +1,5 @@
 # Interactive one-run sender + log capture. Receiver must be started separately.
-# Usage: .\benchmarks\run_benchmark.ps1 -File benchmark_files\text_repeat.txt -Mode huff -Trial 1
+# Usage: .\benchmarks\run_benchmark.ps1 -File benchmark_real\real_chinese.txt -Mode huff -Trial 1
 param(
   [Parameter(Mandatory=$true)][string]$File,
   [ValidateSet('raw','huff')][string]$Mode = 'raw',

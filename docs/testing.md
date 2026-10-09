@@ -1,190 +1,481 @@
-# TextLink 測試與驗證紀錄（V）
+﻿# TextLink 測試與驗證紀錄（V）
 
-## 1. 範圍與測試環境
+## 1. 測試範圍與環境
 
-- 語言／建置：C99、GCC／MinGW，Windows PowerShell。
-- **最新單元測試結果：`PASS 114、FAIL 0、TODO 0`**（2026-10-09，依執行 `mingw32-make test` 的終端機截圖）。原先為 104 PASS；本次增加 10 項邊界及壞輸入測試。
-- 相關 Git 提交：`dc3a506`（`test: add V boundary and malformed input tests`）、`5f8d19f`（`fix: support IPv4 conversion on Windows MinGW`）；兩筆已推送至 `main`。
-- 本次 40 次效能量測：**同一台 Windows 電腦，TCP loopback `127.0.0.1:5000`**；不是兩台實體電腦間的網路效能量測。
-- 實體雙機連線：組員表示已測試；仍需補雙方作業系統、網路類型、IP 網段、實際操作及證據截圖。**雙機連線成功不等於已完成雙機效能量測。**
+本文件記錄 TextLink 專案由 V（Verification，測試驗證）負責的單元測試、異常輸入測試、檔案完整性驗證、效能量測與測試重現作業。
 
-## 2. 測試項目與結果
+### 1.1 測試環境
 
-| 類別 | 驗證方式 | 已知結果／待補證據 |
+- 程式語言：C99
+- 建置工具：GCC / MinGW、`mingw32-make`
+- 作業系統：Windows
+- 操作介面：Windows PowerShell
+- 正式效能量測網路：TCP Loopback，`127.0.0.1:5000`
+- 正式量測次數：四種檔案 × RAW/HUFF 兩種模式 × 各五次，共 40 次
+- 統計方法：每組五次量測取中位數（Median）
+
+本次正式效能量測使用同一台 Windows 電腦進行，所得結果不代表兩台實體電腦之間的網路效能。
+
+團隊曾進行雙機 TCP 連線測試，但完整的雙機測試環境、IP、操作紀錄與效能數據仍需由相關組員補充。雙機功能測試與本文件的 40 次 localhost 效能量測應分開看待。
+
+### 1.2 單元測試結果
+
+2026-10-09 執行 `mingw32-make test`，結果如下：
+
+| 結果 | 數量 |
+|---|---:|
+| PASS | 114 |
+| FAIL | 0 |
+| TODO | 0 |
+
+原先為 104 PASS，本次增加十項邊界及異常輸入測試，結果達到 114 PASS。
+
+代表性 Git commits：
+
+- `dc3a506`：新增 V 邊界與異常輸入測試
+- `5f8d19f`：修正 Windows MinGW IPv4 位址轉換相容性
+- `1441af1`：更新 114 PASS 測試驗證報告
+- `7852c4b`：記錄並重現 TCP 異常封包測試
+- `7395bc5`：修正舊版 MinGW 終端機旗標相容性
+- `9b7a139`：修正 PowerShell Benchmark stderr 處理
+
+## 2. 測試項目與驗證結果
+
+| 測試類別 | 驗證方式 | 結果 |
 |---|---|---|
-| Frame / UTF-8 / Huffman 單元測試 | `mingw32-make test` | **114 PASS、0 FAIL、0 TODO**；請保存完整 log |
-| RAW／HUFF 聊天 | server/client 互傳 ASCII、中文 | 曾完成本機測試；請附截圖 |
-| TXT／WAV 傳檔 | `send`／`recv`，RAW／HUFF | 曾完成本機測試；請附截圖 |
-| 位元組一致性 | `cmd /c fc /b <source> <destination>` | 先前測試顯示無差異；請保留各模式驗證 log |
-| 壞輸入與邊界 | `tests/test_codec.c` | 新增 10 項測試已包含於 114 PASS；不以 PASS 數直接宣稱完整覆蓋率 |
-| TCP 異常封包／中途斷線 | 獨立 Client 送出異常資料 | **尚未執行整合測試；不得標示 PASS** |
-| 效能 | 四個大於 1 MiB 檔案 × RAW/HUFF × 五次 | 40 筆原始數據，見 `benchmarks/raw_results.csv` |
+| Frame、UTF-8、Huffman | `mingw32-make test` | 114 PASS、0 FAIL、0 TODO |
+| RAW/HUFF 聊天 | 本機 TCP server/client 互傳文字 | 已完成本機功能測試 |
+| TXT/WAV 檔案傳輸 | `send` / `recv`，RAW/HUFF | 已進行功能及正式效能量測 |
+| 檔案完整性 | Windows `fc /b` 逐 byte 比對 | 已驗證測試檔案可正確還原 |
+| 邊界與壞輸入 | `tests/test_codec.c` | 新增十項測試並通過 |
+| TCP 異常輸入 | `tests/test_tcp_malformed.ps1` | TCP-01～TCP-04 已執行 |
+| Benchmark | 四檔案 × 兩模式 × 五次 | 40 筆 localhost 量測完成 |
+| 雙機 TCP 連線 | 團隊跨電腦實際操作 | 曾執行，詳細證據待補 |
 
-### 2.1 V 新增的 10 項邊界與壞輸入測試
+單元測試通過不代表已完成所有整合測試、記憶體安全檢查或網路壓力測試。
 
-本次於 `tests/test_codec.c` 擴充 `test_v_boundaries()`，驗證方向包括：
+### 2.1 V 新增的十項邊界與異常輸入測試
 
-- **Frame**：空 payload、最大允許長度，以及超過允許上限的長度。
-- **UTF-8**：內含 NUL (`0x00`) 的輸入、NUL 後仍需檢查非法位元組，以及截斷的四位元組 UTF-8 序列。
-- **Huffman**：截斷的固定標頭前綴，以及 `max_out = 0` 時拒絕產生非空輸出。
+本次擴充 `tests/test_codec.c` 中的 `test_v_boundaries()`，測試方向包含：
 
-以上為新增測試的範圍摘要；單項斷言與實際輸入值以版本 `dc3a506` 的 `tests/test_codec.c` 為準。此次 `mingw32-make test` 執行結果為 **114 PASS、0 FAIL、0 TODO**。
+**Frame**
 
-> 注意：單元測試成功不代表 TCP 異常封包、斷線恢復、記憶體安全性等整合／動態檢測已全部完成。
+- 空 Payload
+- 最大允許長度
+- 超過允許上限的長度
 
-### 2.2 Windows 編譯相容性
+**UTF-8**
 
-- 在重新 clone 的專案中，MinGW 曾對 `inet_ntop`／`inet_pton` 出現未宣告與連結失敗問題。
-- 已修改 `src/net.c` 的 Windows IPv4 轉換相容性處理，提交 `5f8d19f`。
-- 修改後在使用者 Windows 環境重新執行 `mingw32-make test`，得到 114 PASS。
-- **尚需**在乾淨 clone 上保留完整建置 log，確認所有編譯警告與執行結果。
+- 包含 NUL（`0x00`）的輸入
+- NUL 後仍須檢查的非法位元組
+- 截斷的四位元組 UTF-8 序列
 
-## 3. 測試指令（Windows PowerShell）
+**Huffman**
+
+- 截斷的固定標頭前綴
+- `max_out = 0` 時拒絕產生非空輸出
+
+完整測試輸入、斷言與程式實作請參閱 `tests/test_codec.c` 及 Git commit `dc3a506`。
+
+### 2.2 Windows 編譯相容性驗證
+
+在重新 Clone 專案後，曾遇到以下 Windows MinGW 相容性問題：
+
+1. `inet_ntop` / `inet_pton` 未宣告及連結失敗。
+2. `ENABLE_VIRTUAL_TERMINAL_PROCESSING` 在部分 MinGW 環境中未定義。
+
+修正後已重新編譯與執行測試，取得 114 PASS、0 FAIL、0 TODO。
+
+相關修改位於 `src/net.c`、`src/main.c`，可參閱相應 Git commit。
+
+## 3. TCP 異常封包與中途斷線測試
+
+### 3.1 測試方式
+
+測試環境：
+
+- Windows PowerShell
+- 接收端：`textlink.exe recv 5000 out`
+- 網路：`127.0.0.1:5000`
+- 測試腳本：`tests/test_tcp_malformed.ps1`
+
+接收端啟動：
 
 ```powershell
-mingw32-make
-mingw32-make test
-
-# 終端機 A：接收端
 .\textlink.exe recv 5000 out
-
-# 終端機 B：發送端（每次傳輸重新啟動接收端）
-.\textlink.exe send 127.0.0.1 5000 benchmark_files\text_repeat.txt --huff
-
-# 檔案內容逐 byte 比對
-cmd /c fc /b benchmark_files\text_repeat.txt out\text_repeat.txt
 ```
 
-## 4. 效能資料定義與來源
-
-- `file_bytes`：原始檔案 bytes。
-- `wire_bytes`：程式 STATS 回報的線上 bytes（含協定額外資訊）。
-- `ratio`：`wire_bytes / file_bytes`；越小表示傳輸量越少。
-- `encode_ms`：發送端編碼耗時。
-- `send_ms`：發送端傳送耗時。
-- `total_ms`：**發送端**統計的總耗時；不是端到端延遲。
-- `decode_ms`：接收端解碼耗時；不能直接加到 `total_ms` 當作精確端到端延遲。
-- 原始資料由 PowerShell 終端機 STATS 手動抄錄至 Excel，非自動採集；`raw_results.csv` 由既有紀錄整理。
-- `benchmarks/median_results.csv`：每組五次測試的**中位數**，優先用於正式報告。
-- `benchmarks/summary.csv`：平均值摘要，供補充分析。
-
-## 5. 結果與限制
-
-| 檔案 | HUFF 傳輸量／原始檔案大小 | RAW 發送端 total_ms 中位數 | HUFF 發送端 total_ms 中位數 |
-|---|---:|---:|---:|
-| `text_repeat.txt` | 48.73% | 53.7 ms | 65.6 ms |
-| `text_mixed.txt` | 58.82% | 70.3 ms | 174.6 ms |
-| `audio_sine.wav` | 42.14% | 39.0 ms | 34.7 ms |
-| `audio_noise.wav` | 140.62% | 38.9 ms | 175.8 ms |
-
-- 隨機音訊使用 Huffman 反而增加線上傳輸量；壓縮效果取決於資料分布及 codebook 開銷。
-- 本機 loopback 的結果不能代表跨實體網路的吞吐量與延遲。
-- `total_ms` 為發送端指標，不能與接收端 `decode_ms` 直接相加視為完整傳輸時間。
-- 目前數據不能直接推斷資料熵與編碼耗時的因果關係，只能提出合理解釋。
-- 上表壓縮比例沿用 STATS 的 `wire_bytes / file_bytes` 定義，並非以 RAW `wire_bytes` 為分母的流量節省百分比。
-
-## TCP 異常封包與中途斷線整合測試（2026-10-09）
-
-測試環境：Windows PowerShell、TextLink `recv 5000 out`、localhost `127.0.0.1:5000`。使用 `tests/test_tcp_malformed.ps1` 產生異常 TCP 輸入；每個案例均重新啟動接收端。以下結果來自人工執行時的終端機觀察，**不是腳本自動判定**。
-
-| 編號 | 輸入內容 | 接收端實際訊息 | 結果 |
-|---|---|---|---|
-| TCP-01 | 僅送出 2 bytes Header，立即斷線 | 接收失敗；沒有產生輸出檔；對方已關閉連線 | PASS：異常連線安全失敗 |
-| TCP-02 | Header 宣告 Length=11、Type=0x01，實際只送 3/10 bytes Payload 後斷線 | 接收失敗；沒有產生輸出檔；對方已關閉連線 | PASS：接收端安全失敗；尚未確認失敗是否發生在 Payload 讀取階段 |
-| TCP-03 | Header 宣告 Length=`0x01000001`，超過 16 MiB 上限 | 接收失敗；沒有產生輸出檔；收到不合規格的封包 | PASS：拒絕超長 Frame |
-| TCP-04 | Header Length=1（合法），Type=`0xFF`（未知） | 接收失敗；沒有產生輸出檔；收到不合規格的封包 | PASS：接收流程拒絕未知 Type |
-
-**限制：** 四項測試均在本機 loopback 執行，不代表雙機網路壓力測試；沒有使用記憶體分析工具驗證記憶體安全性。TCP-02 的封包 Type=0x01，若要確認確實執行到 Payload 讀取階段，需搭配 `src/transfer.c` 的實作流程檢查。這四項整合測試與 `mingw32-make test` 的 114 項單元測試分開統計。
-
-重現方式：
+另一個終端機執行：
 
 ```powershell
-# 終端機 A（每次測試重新啟動）
-.\textlink.exe recv 5000 out
-
-# 終端機 B（依序替換 TCP-01 ~ TCP-04）
 powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TCP-01
 ```
 
-腳本僅負責發送測試資料，是否 PASS 須觀察終端機 A 的接收端訊息。
+可將 `TCP-01` 改為 `TCP-02`、`TCP-03` 或 `TCP-04`。
 
-## 量測腳本重現驗證（Benchmark Reproducibility）
+每個案例執行前，都必須重新啟動接收端。
 
-### 測試目的
+### 3.2 測試結果
 
-確認 `benchmarks/run_benchmark.ps1` 能夠在 Windows PowerShell 環境下正常執行 RAW 與 Huffman 傳輸，記錄傳送端的 `STATS`，並驗證接收檔案與原始檔案一致。
+| 編號 | 異常輸入 | 接收端觀察結果 | 判定 |
+|---|---|---|---|
+| TCP-01 | 僅送出 2 bytes Header 後斷線 | 接收失敗，未產生輸出檔，顯示對方已關閉連線 | 符合預期 |
+| TCP-02 | Header 宣告 Length=11，但 Payload 只送出 3/10 bytes | 接收失敗，未產生輸出檔，顯示對方已關閉連線 | 安全失敗，細部階段待確認 |
+| TCP-03 | 宣告 Length=`0x01000001`，超過 16 MiB 上限 | 拒絕不合規格封包，未產生輸出檔 | 符合預期 |
+| TCP-04 | 合法 Length=1，未知 Type=`0xFF` | 拒絕不合規格封包，未產生輸出檔 | 符合預期 |
 
-### 測試環境
+以上結果由人工觀察接收端終端機取得。
 
-- 作業系統：Windows
-- 終端機：Windows PowerShell
-- 網路環境：本機 TCP Loopback（`127.0.0.1:5000`）
-- 測試程式：`textlink.exe`
+測試腳本成功送出異常資料，不代表接收端測試自動通過；必須另外檢查接收端反應。
+
+**測試限制：**
+
+- 所有案例均使用本機 Loopback。
+- TCP-02 尚未獨立證明錯誤確實發生於 Payload 讀取階段。
+- 本次未搭配 AddressSanitizer 或其他記憶體分析工具。
+- 此四項 TCP 測試不包含在 114 項離線單元測試的數量內。
+
+## 4. 正式 Benchmark 測試資料
+
+### 4.1 資料集
+
+本次正式效能量測使用以下四種檔案：
+
+| 測試檔案 | 類別 | 大小（bytes） |
+|---|---|---:|
+| `real_chinese.txt` | 中文為主的合成自然語言文章 | 1,200,335 |
+| `real_english.txt` | 英文為主的合成自然語言文章 | 1,258,581 |
+| `audio_music_20s.wav` | 音樂 WAV，16-bit PCM | 3,528,044 |
+| `audio_noise.wav` | 自選高熵雜訊 WAV | 1,120,044 |
+
+資料存放位置：`benchmark_real/`。
+
+四種檔案都超過 1,000,000 bytes，符合至少 1 MB 的檔案大小要求。
+
+中文與英文檔案是人工合成的自然語言測試語料，並非出版文章。音樂 WAV 為 44.1 kHz、雙聲道、16-bit PCM，使用 20 秒音樂片段。雜訊 WAV 為 8 kHz、單聲道、16-bit PCM。
+
+### 4.2 測試設計
+
+每個檔案分別進行：
+
+- RAW：五次
+- HUFF：五次
+
+總計：
+
+4 檔案 × 2 模式 × 5 次 = **40 次正式量測**。
+
+每次測試重新啟動接收端，於傳送端執行 `run_benchmark.ps1`，收集 `STATS`，並將兩端數據整理至正式 CSV。
+
+測試環境統一使用 `127.0.0.1:5000`。
+
+### 4.3 正式量測重現方式
+
+接收端：
+
+```powershell
+.\textlink.exe recv 5000 out
+```
+
+傳送端 RAW 範例：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\benchmarks\run_benchmark.ps1 -File benchmark_real\real_chinese.txt -Mode raw -Trial 1
+```
+
+傳送端 HUFF 範例：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\benchmarks\run_benchmark.ps1 -File benchmark_real\real_chinese.txt -Mode huff -Trial 1
+```
+
+每次測試均需重新啟動接收端，並依序執行 Trial 1～5。
+
+測試完成後可使用：
+
+```powershell
+cmd /c fc /b benchmark_real\real_chinese.txt out\real_chinese.txt
+```
+
+確認接收檔案與原始檔案逐 byte 相同。
+
+`run_benchmark.ps1` 負責執行單次傳送端測試並保存傳送端輸出。接收端的 `STATS` 由人工觀察、記錄並併入正式數據。
+
+## 5. 效能指標定義
+
+### 5.1 傳輸量與壓縮比例
+
+| 指標 | 定義 |
+|---|---|
+| `file_bytes` | 原始檔案大小（bytes） |
+| `wire_bytes` | TextLink STATS 回報的上線傳輸量（bytes），包含協定開銷 |
+| `ratio` | `wire_bytes / file_bytes` |
+| `compressed_pct` | `ratio × 100` |
+| `saved_pct` | `(1 - ratio) × 100` |
+
+當 `ratio` 小於 1，代表傳輸量減少。
+
+當 `ratio` 大於 1，代表壓縮後傳輸量反而增加。
+
+例如：
+
+- `ratio=0.3239`：上線資料量為原始檔案的約 32.39%。
+- `ratio=1.4062`：上線資料量為原始檔案的約 140.62%，增加約 40.62%。
+
+### 5.2 編解碼與總耗時
+
+| 指標 | 定義 |
+|---|---|
+| `encode_ms` | 傳送端編碼耗時 |
+| `send_ms` | 傳送端傳送耗時 |
+| `decode_ms` | 接收端解碼耗時 |
+| `sender_total_ms` | 傳送端 STATS 回報的總耗時 |
+| `receiver_total_ms` | 接收端 STATS 回報的總耗時 |
+
+傳送端與接收端的 `total_ms` 為個別計時結果，不可直接相加視為精確的端對端延遲。
+
+### 5.3 有效傳輸速率
+
+以原始檔案大小及各端總耗時換算有效傳輸速率，單位為十進位 MB/s。
+
+傳送端：
+
+`sender_MBps = file_bytes / (sender_total_ms × 1000)`
+
+接收端：
+
+`receiver_MBps = file_bytes / (receiver_total_ms × 1000)`
+
+此速率包含程式處理時間的影響，不能直接視為實際網路鏈路頻寬。
+
+### 5.4 中位數統計
+
+每個檔案與模式分別執行五次，對每個指標取中位數。
+
+注意：不同欄位的中位數不一定來自同一個 Trial，因此不應將各欄中位數當成單次傳輸的完整計時拆解。
+
+## 6. 正式 Benchmark 結果
+
+### 6.1 五次量測中位數
+
+以下八組結果均使用正式四種測試檔案，不包含先前探索性資料的測試。
+
+| 檔案 | 模式 | wire_bytes | encode_ms | send_ms | decode_ms | 傳送端 total_ms | 接收端 total_ms |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 中文文章 | RAW | 1,200,473 | 0.0 | 24.4 | 0.0 | 35.0 | 33.8 |
+| 中文文章 | HUFF | 388,786 | 27.9 | 3.7 | 8.9 | 51.8 | 22.6 |
+| 英文文章 | RAW | 1,258,724 | 0.0 | 24.3 | 0.0 | 37.1 | 35.9 |
+| 英文文章 | HUFF | 679,187 | 42.6 | 9.4 | 20.5 | 85.0 | 40.9 |
+| 音樂 WAV | RAW | 3,528,360 | 0.0 | 76.1 | 0.0 | 92.8 | 91.3 |
+| 音樂 WAV | HUFF | 3,828,268 | 201.1 | 85.7 | 82.4 | 389.1 | 184.1 |
+| 雜訊 WAV | RAW | 1,120,176 | 0.0 | 21.8 | 0.0 | 34.0 | 33.0 |
+| 雜訊 WAV | HUFF | 1,574,998 | 82.4 | 35.8 | 34.1 | 162.5 | 79.3 |
+
+時間單位：ms。
+
+### 6.2 RAW 與 HUFF 傳輸量比較
+
+| 檔案 | RAW wire_bytes | HUFF wire_bytes | HUFF 傳輸比例 | HUFF 相對原始檔案的節省比例 |
+|---|---:|---:|---:|---:|
+| 中文文章 | 1,200,473 | 388,786 | 32.39% | 67.61% |
+| 英文文章 | 1,258,724 | 679,187 | 53.96% | 46.04% |
+| 音樂 WAV | 3,528,360 | 3,828,268 | 108.51% | -8.51% |
+| 雜訊 WAV | 1,120,176 | 1,574,998 | 140.62% | -40.62% |
+
+節省比例的分母為原始檔案 `file_bytes`，並非 RAW 的 `wire_bytes`。
+
+### 6.3 RAW 與 HUFF 傳送端總耗時比較
+
+| 檔案 | RAW 中位數 | HUFF 中位數 | HUFF 比 RAW 增加 |
+|---|---:|---:|---:|
+| 中文文章 | 35.0 ms | 51.8 ms | 16.8 ms |
+| 英文文章 | 37.1 ms | 85.0 ms | 47.9 ms |
+| 音樂 WAV | 92.8 ms | 389.1 ms | 296.3 ms |
+| 雜訊 WAV | 34.0 ms | 162.5 ms | 128.5 ms |
+
+四種正式測試檔案中，RAW 的傳送端總耗時中位數都低於 HUFF。
+
+### 6.4 有效傳輸速率
+
+以下使用原始檔案大小及傳送端 `total_ms` 中位數換算。
+
+| 檔案 | RAW (MB/s) | HUFF (MB/s) |
+|---|---:|---:|
+| 中文文章 | 34.30 | 23.17 |
+| 英文文章 | 33.92 | 14.81 |
+| 音樂 WAV | 38.02 | 9.07 |
+| 雜訊 WAV | 32.94 | 6.89 |
+
+本次 localhost 實驗中，四種檔案的 RAW 有效速率都高於 HUFF。
+
+## 7. 實驗分析與討論
+
+### 7.1 中文文章
+
+中文文章在 Huffman 模式下使用 `SYM_CHAR`，上線傳輸量為原始檔案的約 32.39%，減少約 67.61%。
+
+然而，傳送端總耗時中位數從 RAW 的 35.0 ms 增加到 HUFF 的 51.8 ms。
+
+顯示 Huffman 雖然有效減少資料量，但在本機高速 Loopback 環境中，額外編碼成本仍可能高於節省的傳送時間。
+
+### 7.2 英文文章
+
+英文文章也使用 `SYM_CHAR`。
+
+Huffman 將傳輸量降至約 53.96%，但傳送端總耗時中位數由 37.1 ms 增加到 85.0 ms。
+
+文字資料的可壓縮程度與符號出現頻率、字元分布及 Codebook 開銷有關，不能僅以中文或英文判斷壓縮效率。
+
+### 7.3 音樂 WAV
+
+音樂檔使用 `SYM_S16`，以 16-bit PCM sample 作為 Huffman 符號。
+
+HUFF 傳輸比例約 108.51%，代表傳輸量反而增加約 8.51%。
+
+傳送端總耗時中位數也從 92.8 ms 增加到 389.1 ms。
+
+可能原因包含實際 sample 值種類較多、頻率分布較分散，以及 Codebook 等額外開銷。單靠壓縮比例及 Histogram，尚不能確認各種成本分別占多少。
+
+### 7.4 雜訊 WAV
+
+雜訊 WAV 的 HUFF 傳輸比例約 140.62%，顯示資料量增加約 40.62%。
+
+傳送端總耗時中位數從 RAW 的 34.0 ms 增加至 HUFF 的 162.5 ms。
+
+此結果符合高熵資料通常較難使用 Huffman 有效壓縮的預期，但實際膨脹原因仍須結合 Codebook 大小與編碼資料長度進一步分析。
+
+### 7.5 實驗限制
+
+- 正式 40 次效能量測均使用 localhost。
+- 目前沒有將雙機功能測試誤列為雙機效能量測。
+- 各端 `total_ms` 不可直接相加視為完整端對端時間。
+- 測試檔案的資料分布會影響 Huffman 表現。
+- 正式中文與英文檔案為人工合成語料，不能直接代表所有真實出版文章。
+- 未執行記憶體分析及網路壓力測試。
+- 量測結果會受到電腦負載及執行環境影響。
+
+## 8. 字元機率與 WAV Histogram 分析
+
+除傳輸效能外，本次另外分析兩種文字檔的字元出現機率，以及音樂 WAV 的 PCM sample 分布。
+
+### 8.1 文字字元統計
+
+使用 `benchmarks/char_frequency.py` 讀取 UTF-8 文字檔並統計字元頻率。
+
+| 項目 | 中文文章 | 英文文章 |
+|---|---:|---:|
+| 總字元數 | 403,185 | 1,256,253 |
+| 不同字元數 | 373 | 57 |
+| 統計圖 | 前 30 字元機率 | 前 30 字元機率 |
+
+對應原始資料：
+
+- `benchmarks/figures/real_chinese_top30.csv`
+- `benchmarks/figures/real_english_top30.csv`
+
+字元機率定義為：
+
+`P(c) = 該字元出現次數 / 總字元數`
+
+本次統計以 Unicode 字元為單位，而非 UTF-8 bytes。
+
+### 8.2 音樂 WAV Sample Histogram
+
+使用 `benchmarks/wav_histogram.py` 讀取 `audio_music_20s.wav`。
+
+音訊參數：
+
+- 取樣率：44,100 Hz
+- 聲道：2
+- Sample Width：16-bit
+- 長度：20 秒
+- 總 Frames：882,000
+- 總 Samples：1,764,000
+
+將 PCM sample 值範圍 -32768 至 32767 分成 64 個等寬區間，統計各區間的 sample 數量。
+
+輸出資料：
+
+`benchmarks/figures/audio_music_histogram.csv`
+
+Histogram 用來觀察 sample 值的分布情況，但因每個區間包含多個實際取樣值，不能直接代替 Huffman 精確符號頻率或 Codebook 大小分析。
+
+## 9. 正式數據與重現檔案
+
+| 檔案 | 用途 |
+|---|---|
+| `benchmarks/formal_raw_40.csv` | 40 次正式原始量測紀錄 |
+| `benchmarks/formal_medians.csv` | 8 組中位數統計 |
+| `benchmarks/formal_benchmark_40.xlsx` | 正式原始數據、統計與比較圖表 |
+| `benchmarks/run_benchmark.ps1` | 單次傳送端量測與 Log 保存 |
+| `benchmarks/char_frequency.py` | 文字字元頻率分析 |
+| `benchmarks/wav_histogram.py` | 音樂 WAV Sample Histogram |
+| `tests/test_tcp_malformed.ps1` | TCP 異常封包重現測試 |
+| `benchmark_real/` | 正式四種測試檔案 |
+
+正式 CSV 由實際傳送端及接收端 STATS 整理而成。原始量測的 `ratio` 在程式輸出中只顯示四位小數，正式 CSV 可依 `wire_bytes / file_bytes` 計算較精確比例。
+
+## 10. 歷史補充：量測腳本重現驗證（Trial 99）
+
+本節為正式驗收資料確立前執行的額外流程測試，**不納入新的 40 筆正式量測數據**。
+
+### 10.1 測試目的
+
+確認 `benchmarks/run_benchmark.ps1` 可以執行 RAW 與 HUFF 傳輸、保存傳送端 STATS，並搭配檔案比對驗證內容一致。
+
+### 10.2 測試設定
+
 - 測試檔案：`benchmark_files/text_repeat.txt`
-- 原始檔案大小：1,740,000 bytes
-- 測試編號：Trial 99（額外重現測試，不納入原始 40 次統計）
+- 原始大小：1,740,000 bytes
+- 測試編號：Trial 99
+- 網路：`127.0.0.1:5000`
+- 模式：RAW、HUFF
 
-### 測試步驟
+### 10.3 歷史資料保存說明
 
-1. 編譯程式：`mingw32-make`。
-2. 在第一個 PowerShell 終端機執行 `.\textlink.exe recv 5000 out`。
-3. 在第二個終端機執行 RAW 量測腳本：
+本次 Trial 99 原使用 `benchmark_files/text_repeat.txt` 進行 RAW 與 HUFF 測試。
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\benchmarks\run_benchmark.ps1 -File benchmark_files\text_repeat.txt -Mode raw -Trial 99
-   ```
+由於後續正式驗收資料集已改為 `benchmark_real/`，原 `benchmark_files/` 已從 Repository 最新版本移除，因此 Trial 99 僅作為歷史測試紀錄，不能直接使用原指令重現。
 
-4. RAW 完成後重新啟動接收端，再執行 HUFF 量測：
+目前若要重新執行效能量測，請依第 4.3 節使用正式測試檔案與 `benchmarks/run_benchmark.ps1`。
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\benchmarks\run_benchmark.ps1 -File benchmark_files\text_repeat.txt -Mode huff -Trial 99
-   ```
+以下保留當時量測結果，供測試流程及 PowerShell 相容性修正的歷史追溯。
 
-5. 分別確認 Log 中有 `STATS role=send`，並執行以下指令比對檔案：
-
-   ```powershell
-   cmd /c fc /b benchmark_files\text_repeat.txt out\text_repeat.txt
-   ```
-
-### 測試結果
+### 10.4 歷史結果
 
 | 項目 | RAW | HUFF |
 |---|---:|---:|
-| 原始檔案大小（bytes） | 1,740,000 | 1,740,000 |
-| 傳輸位元組數（wire_bytes） | 1,740,177 | 847,944 |
-| 傳輸比例（ratio） | 1.0001 | 0.4873 |
-| 編碼時間（encode_ms） | 0.0 ms | 24.4 ms |
-| 傳送時間（send_ms） | 29.0 ms | 14.3 ms |
-| 傳送端總耗時（total_ms） | 47.7 ms | 69.9 ms |
-| 傳送端 Log | 成功保存 | 成功保存 |
-| 檔案逐 byte 比對 | PASS | PASS |
+| file_bytes | 1,740,000 | 1,740,000 |
+| wire_bytes | 1,740,177 | 847,944 |
+| ratio | 1.0001 | 0.4873 |
+| encode_ms | 0.0 ms | 24.4 ms |
+| send_ms | 29.0 ms | 14.3 ms |
+| sender total_ms | 47.7 ms | 69.9 ms |
+| 檔案比對 | PASS | PASS |
 
 接收端 HUFF 解碼時間為 14.5 ms。
 
-兩種模式均成功傳送並還原檔案，`fc /b` 顯示「找不到相異處」，證明傳輸後檔案內容與原始資料一致。
+測試期間曾因 PowerShell 對原生程式 stderr 輸出的處理而遇到 `NativeCommandError`。修正腳本後，RAW/HUFF 均能正常保存 Log。
 
-### PowerShell 相容性修正
+本項僅用來證明量測腳本的重現流程，不代表正式資料集的壓縮表現。
 
-首次重現時，量測腳本因 Windows PowerShell 對原生程式 stderr 的處理方式而出現 `NativeCommandError`。
+## 11. 提交前驗證清單
 
-TextLink 的 `STATS` 原本即輸出至 stderr，並不代表傳輸失敗。修正腳本的錯誤處理後，RAW 與 HUFF 均可正常執行，且能將傳送端輸出保存至 `benchmarks/logs/`。
+- [x] 新增十項 V 邊界與異常輸入測試。
+- [x] 取得 114 PASS、0 FAIL、0 TODO。
+- [x] 提交相關程式與相容性修正至 Git。
+- [x] 執行 TCP-01～TCP-04 異常封包測試。
+- [x] 完成正式四種檔案的 RAW/HUFF 各五次量測。
+- [x] 整理 40 筆原始數據及八組中位數。
+- [x] 完成中文字元、英文字元頻率及 WAV Histogram 統計。
+- [x] 使用 `fc /b` 進行傳輸檔案完整性驗證。
+- [x] 建立正式 Benchmark CSV 與 Excel。
+- [ ] 保存完整 `mingw32-make test` 輸出、GCC 版本及對應 Commit SHA。
+- [ ] 補充兩台實體電腦的測試環境與證據。
+- [ ] 確認三份正式統計檔案、圖表及相關文件均已推送 GitHub。
+- [ ] 將正式 Benchmark 圖表與分析整合至 `slides.pdf`。
+- [ ] 與其他組員核對最終分工、文件與口頭展示內容。
 
-### 結論
+---
 
-本次重現驗證確認量測腳本可以正常執行、保留傳送端統計資訊，並搭配檔案比對驗證資料完整性。
-
-Huffman 模式將本次測試的上線傳輸量降低約 51.27%，但傳送端總耗時高於 RAW，反映壓縮處理所需的額外成本。
-
-本次 Trial 99 僅用於驗證測試流程的可重現性，不取代原先 40 次正式效能量測結果。`total_ms` 為傳送端量測值，不代表端對端傳輸延遲。
-
-## 6. 提交前待辦
-
-- [x] 新增 10 項 V 邊界與壞輸入測試，並取得 `114 PASS、0 FAIL、0 TODO`。
-- [x] 將測試及 Windows 相容性修改提交 GitHub（`dc3a506`、`5f8d19f`）。
-- [ ] 保存 `mingw32-make test` 完整輸出、GCC 版本、日期與 commit SHA（目前已有終端機結果截圖）。
-- [ ] 核對 `tests/` 各個壞輸入案例的實際覆蓋範圍，必要時補測。
-- [ ] 執行 TCP 異常封包、截斷 payload、斷線等整合測試並記錄結果。
-- [ ] 以 Hash 或 `fc /b` 保留四個檔案在 RAW／HUFF 下的完整性證據。
-- [ ] 補上兩台實體電腦測試環境與證據；如課程要求雙機效能數據，另行量測。
-- [ ] 把三張 Excel 圖表匯出 PNG 放入 `benchmarks/figures/`，並確認正式報告採用中位數。
-- [ ] 在根目錄 `README.md` 連結本文件及 benchmark 資料。
+本文件以已執行的測試、保留的 STATS 及 Git 紀錄為依據。正式效能報告優先使用 `benchmarks/formal_raw_40.csv` 與 `benchmarks/formal_medians.csv`，歷史探索性量測不與正式 40 筆資料混用。

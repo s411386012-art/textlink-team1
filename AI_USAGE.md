@@ -1,4 +1,4 @@
-# AI_USAGE.md — TextLink AI 工具使用紀錄
+﻿# AI_USAGE.md — TextLink AI 工具使用紀錄
 
 ## 1. 使用原則
 
@@ -47,10 +47,10 @@ AI 協助規劃測試流程、整理統計資料及分析 RAW 與 Huffman 的效
 相關檔案：
 
 - `benchmarks/run_benchmark.ps1`
-- `benchmarks/raw_results.csv`
-- `benchmarks/median_results.csv`
-- `benchmarks/summary.csv`
-- `benchmark_files/`
+- `benchmarks/formal_raw_40.csv`
+- `benchmarks/formal_medians.csv`
+- `benchmarks/formal_benchmark_40.xlsx`
+- 初期探索性量測使用 `benchmark_files/`（舊資料集，現已從 Repository 最新版本移除）；正式驗收改用 `benchmark_real/`。
 
 ### 2.4 程式除錯與相容性修正
 

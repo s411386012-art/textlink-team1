@@ -1,4 +1,4 @@
-# TEAM_LOG.md — TextLink 團隊開發紀錄
+﻿# TEAM_LOG.md — TextLink 團隊開發紀錄
 
 ## 專案資訊
 
@@ -88,5 +88,5 @@
 - `docs/interface.md`：通訊介面與資料格式
 - `docs/testing.md`：測試方法及驗證結果
 - `benchmarks/README.md`：效能量測說明
-- `benchmarks/raw_results.csv`：原始量測數據
-- `benchmarks/summary.csv`：統計摘要
+- `benchmarks/formal_raw_40.csv`：原始量測數據
+- `benchmarks/formal_benchmark_40.xlsx`：統計摘要

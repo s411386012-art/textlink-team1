@@ -1,9 +1,9 @@
-# 提供給口頭報告 P 的數據與待補項目
+﻿# 提供給口頭報告 P 的數據與待補項目
 
 ## 已有：Loopback 效能
-- `benchmarks/raw_results.csv`：4 檔 × RAW/HUFF × 5 次，40 筆。
-- `benchmarks/median_results.csv`：依課程要求，**中位數**為主要報告數據。
-- `benchmarks/summary.csv`：原先整理的平均值，只能作補充，不能取代中位數。
+- `benchmarks/formal_raw_40.csv`：4 檔 × RAW/HUFF × 5 次，40 筆。
+- `benchmarks/formal_medians.csv`：依課程要求，**中位數**為主要報告數據。
+- `benchmarks/formal_benchmark_40.xlsx`：原先整理的平均值，只能作補充，不能取代中位數。
 - `benchmarks/figures/`：請將已做好的 3 張 Excel 圖表匯出 PNG。
 - 測試環境：Windows 單機 127.0.0.1:5000，非雙機量測。
 
@@ -21,3 +21,4 @@
 - text_repeat HUFF ratio=0.4873；text_mixed=0.5882；audio_sine=0.4214；audio_noise=1.4062。
 - 在 loopback，Huffman 不保證較快；高熵噪聲音訊反而膨脹。
 - 本文件不能當作已完成的測試證明。
+

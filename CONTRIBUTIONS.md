@@ -1,4 +1,4 @@
-# CONTRIBUTIONS.md — TextLink 成員貢獻紀錄
+﻿# CONTRIBUTIONS.md — TextLink 成員貢獻紀錄
 
 ## 1. 團隊角色分工
 
@@ -24,7 +24,7 @@
 - 建立 `tests/test_tcp_malformed.ps1`，重現 TCP-01～TCP-04 異常封包測試。
 - 建立四種 Benchmark 測試資料，涵蓋重複文字、混合文字、規律音訊及高熵音訊。
 - 執行四種檔案、兩種模式、每種五次，共 40 次效能量測。
-- 整理 `benchmarks/raw_results.csv`、`median_results.csv`、`summary.csv` 等統計資料。
+- 整理 `benchmarks/formal_raw_40.csv`、`formal_medians.csv`、`formal_benchmark_40.xlsx` 等統計資料。
 - 維護 `benchmarks/run_benchmark.ps1`，驗證 RAW/HUFF 傳輸、STATS 紀錄與量測重現性。
 - 使用 `fc /b` 驗證接收檔案與原始檔案逐 byte 相同。
 - 修正 Windows MinGW 環境下的 IPv4 轉換及終端機旗標相容性問題。
