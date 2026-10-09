@@ -1,0 +1,22 @@
+﻿case,characters,file_bytes,raw_wire_bytes,huff_encoded_bytes,huff_wire_bytes,huff_ratio,huff_percentage,huff_smaller_than_raw,huff_below_100pct
+Chinese natural,10,28,33,98,103,3.678571,367.86,False,False
+Chinese natural,50,144,149,415,420,2.916667,291.67,False,False
+Chinese natural,100,294,299,811,816,2.77551,277.55,False,False
+Chinese natural,500,1486,1491,2591,2596,1.746972,174.7,False,False
+Chinese natural,1000,2974,2979,3360,3365,1.131473,113.15,False,False
+Chinese natural,2000,5952,5957,4772,4777,0.802587,80.26,True,True
+Chinese natural,2500,7442,7447,5336,5341,0.717683,71.77,True,True
+English natural,10,10,15,80,85,8.5,850.0,False,False
+English natural,50,50,55,303,308,6.16,616.0,False,False
+English natural,100,100,105,435,440,4.4,440.0,False,False
+English natural,500,500,505,761,766,1.532,153.2,False,False
+English natural,1000,1000,1005,1059,1064,1.064,106.4,False,False
+English natural,2000,2004,2009,1630,1635,0.815868,81.59,True,True
+English natural,2500,2508,2513,1900,1905,0.759569,75.96,True,True
+Repeated A,10,10,15,24,29,2.9,290.0,False,False
+Repeated A,50,50,55,29,34,0.68,68.0,True,True
+Repeated A,100,100,105,35,40,0.4,40.0,True,True
+Repeated A,500,500,505,85,90,0.18,18.0,True,True
+Repeated A,1000,1000,1005,147,152,0.152,15.2,True,True
+Repeated A,2000,2000,2005,272,277,0.1385,13.85,True,True
+Repeated A,2500,2500,2505,335,340,0.136,13.6,True,True

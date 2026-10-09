@@ -1,0 +1,5 @@
+﻿file,raw_trials,huff_trials,raw_wire_bytes,huff_wire_bytes,saved_bytes,encode_median_ms,decode_median_ms,extra_median_ms,raw_sender_median_ms,huff_sender_median_ms,break_even_mbps,status
+real_chinese.txt,5,5,1200473,388786,811687,27.9,8.9,37.6,35.0,51.8,172.699,theoretical_break_even
+real_english.txt,5,5,1258724,679187,579537,42.6,20.5,63.0,37.1,85.0,73.592,theoretical_break_even
+audio_music_20s.wav,5,5,3528360,3828268,-299908,201.1,82.4,283.5,92.8,389.1,,no_positive_break_even
+audio_noise.wav,5,5,1120176,1574998,-454822,82.4,34.1,117.5,34.0,162.5,,no_positive_break_even
