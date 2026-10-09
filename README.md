@@ -259,34 +259,27 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 
 ### 8.3 壓縮比例與有效傳輸速率
 
-本專案的傳輸比例定義為：
+本專案以實際網路傳輸位元組數（`wire_bytes`）與原始檔案大小（`file_bytes`）計算傳輸比例，並根據各端總耗時換算有效傳輸速率。
 
-\[
-\text{ratio}=\frac{\text{wire\_bytes}}{\text{file\_bytes}}
-\]
+| 指標 | 計算公式 | 說明 |
+|---|---|---|
+| 傳輸比例（ratio） | `wire_bytes / file_bytes` | 小於 1 表示資料量減少 |
+| 壓縮後比例（%） | `ratio × 100` | 壓縮後資料量占原始檔案的百分比 |
+| 節省傳輸量比例（%） | `(1 - ratio) × 100` | 負值代表傳輸量增加 |
+| 傳送端有效速率（MB/s） | `file_bytes / (sender_total_ms × 1000)` | 使用傳送端總耗時 |
+| 接收端有效速率（MB/s） | `file_bytes / (receiver_total_ms × 1000)` | 使用接收端總耗時 |
 
-壓縮後比例 (%)：
+**範例：中文文章 Huffman 傳輸**
 
-\[
-\text{Compressed Percentage}=\text{ratio}\times100\%
-\]
+- 原始大小：1,200,335 bytes
+- 實際上線傳輸量：388,786 bytes
+- 傳輸比例：約 0.3239
+- 壓縮後比例：約 32.39%
+- 節省傳輸量：約 67.61%
 
-節省傳輸量比例 (%)：
+有效傳輸速率採十進位 MB/s（1 MB = 1,000,000 bytes）。
 
-\[
-\text{Saved Percentage}=(1-\text{ratio})\times100\%
-\]
-
-若結果為負值，代表壓縮後的資料量反而增加。
-
-有效傳輸速率（十進位 MB/s）：
-
-\[
-\text{Effective Throughput}=
-\frac{\text{file\_bytes}}{\text{total\_ms}\times1000}
-\]
-
-傳送端與接收端分別使用各自的 `total_ms` 計算，不將兩端時間直接相加。
+傳送端與接收端使用各自的 `total_ms` 計算有效速率，**不可直接將兩端耗時相加作為端對端延遲**。此處計算的是包含程式處理時間的有效速率，不等於實際網路頻寬。
 
 ### 8.4 正式測試結果
 
