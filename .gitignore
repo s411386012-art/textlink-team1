@@ -53,3 +53,12 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Local benchmark logs
+/benchmarks/logs/
+
+# Received files
+/out/
+
+# Local source backup
+/src/net_original.c
