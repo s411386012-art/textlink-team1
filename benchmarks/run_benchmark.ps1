@@ -13,6 +13,25 @@ if (-not (Test-Path $File)) { throw "File not found: $File" }
 New-Item -ItemType Directory -Force -Path '.\benchmarks\logs' | Out-Null
 $base = [IO.Path]::GetFileName($File)
 $log = ".\benchmarks\logs\${base}_${Mode}_${Trial}.txt"
-& .\textlink.exe send $HostIP $Port $File "--$Mode" 2>&1 | Tee-Object -FilePath $log
-if ($LASTEXITCODE -ne 0) { throw "Transfer failed: exit $LASTEXITCODE" }
+
+# Temporarily allow native stderr output without treating it as a terminating error.
+$previousErrorActionPreference = $ErrorActionPreference
+
+try {
+    $ErrorActionPreference = 'Continue'
+
+    & .\textlink.exe send $HostIP $Port $File "--$Mode" 2>&1 |
+        ForEach-Object { $_.ToString() } |
+        Tee-Object -FilePath $log
+
+    $exitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+
+if ($exitCode -ne 0) {
+    throw "Transfer failed: exit $exitCode"
+}
+
 Write-Host "Saved sender output to $log; verify receiver output and file hash separately."
