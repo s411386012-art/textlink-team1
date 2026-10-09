@@ -35,7 +35,50 @@
  *  可以跳過：tl_sym_name、tl_strerror、net_perror、format_peer 只是把代號轉成給人看的文字。
  *===========================================================================*/
 #include "textlink.h"
+#ifdef _WIN32
+static int tl_inet_pton(int af, const char *src, void *dst) {
+    if (af != AF_INET || !src || !dst) return 0;
 
+    unsigned int a, b, c, d;
+    char extra;
+
+    if (sscanf(src, "%u.%u.%u.%u%c",
+               &a, &b, &c, &d, &extra) != 4)
+        return 0;
+
+    if (a > 255 || b > 255 || c > 255 || d > 255)
+        return 0;
+
+    struct in_addr *addr = (struct in_addr *)dst;
+    addr->s_addr = htonl(
+        ((uint32_t)a << 24) |
+        ((uint32_t)b << 16) |
+        ((uint32_t)c << 8) |
+        (uint32_t)d
+    );
+
+    return 1;
+}
+
+static const char *tl_inet_ntop(int af, const void *src,
+                                char *dst, size_t size) {
+    if (af != AF_INET || !src || !dst || size == 0)
+        return NULL;
+
+    struct in_addr addr;
+    memcpy(&addr, src, sizeof(addr));
+
+    const char *ip = inet_ntoa(addr);
+    if (!ip || strlen(ip) + 1 > size)
+        return NULL;
+
+    strcpy(dst, ip);
+    return dst;
+}
+#else
+#define tl_inet_pton inet_pton
+#define tl_inet_ntop inet_ntop
+#endif
 /* 全域計數器：這支程式到目前為止總共送出／收到幾個 bytes，由 send_all／recv_all 累加。
  * 殼本身沒有用到它們（STATS 的 wire_bytes 是 src/transfer.c 逐個 frame 加出來的），留給你們做量測或除錯時對帳用。 */
 uint64_t g_tx_bytes = 0;
@@ -151,7 +194,7 @@ static void set_nodelay(socket_t s) {
  * 轉回這台電腦的順序才能當一般整數印出來（n = network、h = host、s = short 16 bits）。 */
 static void format_peer(const struct sockaddr_in *a, char *out, size_t cap) {
     char ip[INET_ADDRSTRLEN] = "?";
-    inet_ntop(AF_INET, (void *)&a->sin_addr, ip, sizeof(ip));
+    tl_inet_ntop(AF_INET, (void *)&a->sin_addr, ip, sizeof(ip));
     snprintf(out, cap, "%s:%d", ip, (int)ntohs(a->sin_port));
 }
 
@@ -187,7 +230,7 @@ socket_t net_listen_accept(const char *bind_ip, int port, char *peer, size_t pee
     addr.sin_port   = htons((unsigned short)port);
     if (bind_ip == NULL) {
         addr.sin_addr.s_addr = htonl(INADDR_ANY);           /* 0.0.0.0：聽本機所有網卡 */
-    } else if (inet_pton(AF_INET, bind_ip, &addr.sin_addr) != 1) {     /* inet_pton：IP 文字 → 4 bytes；回傳 1 才是成功 */
+    } else if (tl_inet_pton(AF_INET, bind_ip, &addr.sin_addr) != 1) {     /* inet_pton：IP 文字 → 4 bytes；回傳 1 才是成功 */
         fprintf(stderr, "錯誤: --bind 的 IP 格式不對：%s\n", bind_ip);
         CLOSESOCK(ls);                                      /* 每一條失敗的路都要記得把已經開的 socket 關掉 */
         return SOCK_INVALID;
@@ -261,7 +304,7 @@ socket_t net_connect(const char *ip, int port, int timeout_ms, char *peer, size_
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port   = htons((unsigned short)port);
-    if (inet_pton(AF_INET, ip, &addr.sin_addr) != 1) {
+    if (tl_inet_pton(AF_INET, ip, &addr.sin_addr) != 1) {
         fprintf(stderr, "錯誤: IP 格式不對：%s（要像 192.168.1.23 這樣的 IPv4 位址）\n", ip);
         return SOCK_INVALID;
     }
