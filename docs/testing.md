@@ -174,6 +174,69 @@ cmd /c fc /b "$env:TEMP\tcp_stream_06.bin" out\tcp_stream_06.bin
 
 **測試結論：** TextLink 接收端能正確處理本次分段寫入與連續 Frame 串流，並完整還原資料。此測試未直接記錄底層 `recv()` 的實際分段邊界，因此不宣稱涵蓋所有 TCP 封包切分情況。
 
+## Huffman 特殊檔案與 BYTE 自動回退整合測試（2026-10-09）
+
+### 測試目的與環境
+
+驗證 TextLink 在 Huffman 模式下處理特殊檔案、符號邊界及格式不相容情況的能力，包含自動回退至 `SYM_BYTE`、完成傳輸以及逐 byte 還原。
+
+測試環境為 Windows PowerShell、TCP Loopback `127.0.0.1:5000`。每次測試均重新啟動接收端，使用 `textlink.exe send ... --huff` 傳送，並透過 `fc /b` 比對原始與接收檔案。
+
+### 測試結果
+
+| 測試檔案 | 原始大小（bytes） | 傳送端 sym | wire_bytes | ratio | 結果 |
+|---|---:|---|---:|---:|---|
+| `invalid_utf8.txt` | 6 | byte | 99 | 16.5000 | PASS |
+| `audio_8bit.wav` | 8,044 | byte | 2,612 | 0.3247 | PASS |
+| `single_symbol.bin` | 4,096 | byte | 580 | 0.1416 | PASS |
+| `empty.bin` | 0 | byte | 54 | 0.0000* | PASS |
+| `all_256_bytes.bin` | 4,096 | byte | 5,694 | 1.3901 | PASS |
+| `utf8_bom_crlf.txt` | 21 | char | 130 | 6.1905 | PASS |
+| `wav_extra_chunk.wav` | 8,056 | s16 | 635 | 0.0788 | PASS |
+
+*空檔案的 `file_bytes = 0`，因此 `wire_bytes / file_bytes` 在數學上未定義。程式顯示的 `ratio=0.0000` 是零分母的特殊處理值，不代表實際壓縮率為 0%。*
+
+### 自動回退驗證
+
+- `invalid_utf8.txt`：副檔名為 `.txt`，但包含非法 UTF-8，程式由原本的 CHAR 選擇回退至 BYTE。
+- `audio_8bit.wav`：檔案為 8-bit PCM，不符合 16-bit sample 編碼條件，因此回退至 BYTE。
+- `utf8_bom_crlf.txt`：包含 BOM、CRLF、1～4 bytes UTF-8 字元，正確使用 CHAR。
+- `wav_extra_chunk.wav`：包含額外 LIST Chunk 的 16-bit PCM WAV，正確使用 S16。
+
+### 檔案完整性
+
+七個案例的接收端皆成功存檔，且使用 `fc /b` 比對後顯示「找不到相異處」。
+
+### 重現方式
+
+接收端：
+
+```powershell
+.\textlink.exe recv 5000 out
+```
+
+傳送端（以 8-bit WAV 為例）：
+
+```powershell
+.\textlink.exe send 127.0.0.1 5000 tests\edge_files\audio_8bit.wav --huff
+```
+
+檔案比對：
+
+```powershell
+cmd /c fc /b tests\edge_files\audio_8bit.wav out\audio_8bit.wav
+```
+
+其餘六個案例只需替換檔名，每次傳輸前重新啟動接收端。
+
+測試資料位於 `tests/edge_files/`。
+
+### 測試結論
+
+本次七種特殊檔案均完成 Huffman 傳輸與逐 byte 還原。非法 UTF-8 TXT 與 8-bit WAV 也成功驗證 `SYM_BYTE` 自動回退。
+
+本測試屬於 localhost 整合測試，不等同於記憶體安全性檢測，也不代表所有可能的惡意輸入均已涵蓋。
+
 ## 4. 正式 Benchmark 測試資料
 
 ### 4.1 資料集
