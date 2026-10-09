@@ -31,7 +31,13 @@ UTF-8 文字，不含結尾 `\0`；最長 4095 bytes。接收端以 RFC 3629 檢
 
 ### 0x02 TEXT_HUFF
 
-將輸入文字呼叫 `huff_encode(SYM_CHAR)` 壓縮，產生的**完整 Huffman 區塊（含 Header、Codebook、Bitstream）原樣放入 payload**。若壓完比原文大，仍強制使用壓縮後的區塊，以維持實作單純與封包格式的一致性，實際壓縮率應以本組量測結果為準。若輸入包含非法 UTF-8，則退回使用 `SYM_BYTE` 模式壓縮。
+傳送端先驗證聊天輸入是否為合法 UTF-8。若合法，使用 `huff_encode(SYM_CHAR)` 進行壓縮，並將完整 Huffman 區塊（Header、Codebook、Bitstream）放入 Payload。
+
+若壓縮後資料量大於原始文字，仍維持 HUFF 模式傳送，不會自動切換 RAW。
+
+若使用者輸入的文字不是合法 UTF-8，聊天傳送端拒絕送出並顯示錯誤訊息。接收端解碼後仍須驗證文字合法性。
+
+BYTE fallback 主要適用於檔案編碼：當文字資料不符合 UTF-8 要求，或 WAV 不符合支援的 16-bit PCM 格式時，可使用 `SYM_BYTE` 保留原始 bytes。
 
 ### 0x10 FILE_BEGIN（傳送端 → 接收端）
 
@@ -82,6 +88,14 @@ WAV 的檔頭與非樣本資料必須原封不動夾帶。若 `data` chunk 長�
 | `hdr_bytes` | `total_hdr` | 原始 WAV 檔頭資料 |
 | `tail_bytes`| `tail_len` | 原始 WAV 結尾資料 |
 
+**WAV 邊界與對齊處理**
+
+解析 WAV 時，應以 RIFF chunk 的實際長度欄位定位 `data` 區，而非假設音訊資料固定從第 44 byte 開始。
+
+若音訊資料無法完整切分為 16-bit sample，必須保留剩餘的原始 byte。若 RIFF chunk 含有 padding byte 或後續其他 chunk，也必須確保解碼後仍能逐 byte 還原原始 WAV。
+
+`total_hdr`、`tail_len` 與 sample 資料的實際切分方式，應與編碼器及解碼器的實作一致。
+
 #### C. Codebook 區塊 (長度 = K 筆紀錄大小的總和)
 連續出現 K 次的編碼紀錄。每筆紀錄包含：
 1. **符號值**：BYTE 佔 1 byte；S16 佔 2 bytes；CHAR 佔 4 bytes。
@@ -122,4 +136,11 @@ WAV 的檔頭與非樣本資料必須原封不動夾帶。若 `data` chunk 長�
 1. **記憶體用量**：WAV 雙聲道高取樣率或極大文字檔，可能導致 `SYM_CHAR` 與 `SYM_S16` 模式下 `calloc` 配置出極大記憶體。若超出系統上限，會回傳 `TL_ERR_NOMEM`。
 2. **WAV 格式支援**：本工具的 `SYM_S16` 僅支援 16-bit PCM (AudioFormat = 1)。8-bit PCM 或非 WAV 檔案強制作為 `SYM_BYTE` 處理。
 3. **碼長與輸入上限**：編碼使用 `uint64_t`，支援 1–64 bits；遞迴建碼在超出上限前回報錯誤，解碼也拒絕超過 64 的碼長。原始輸入限制為 64 MiB，因此符號頻率總和至多 2^26；正整數頻率的 Huffman 最壞深度受 Fibonacci 型增長限制，在這個資料量下不會需要 64 bits 以上的碼長。
-4. **驗證範圍**：此修訂的 codec 測試不等於跨機器驗收或效能報告。仍須另外執行作業要求的網路、斷線及量測測試。
+
+### 6.4 驗證範圍
+
+本專案已完成 114 項 C 單元測試，以及本機 TCP 異常封包、拆包／黏包、Huffman 邊界資料與 RAW/HUFF 無損傳輸測試。
+
+上述結果僅代表已執行的本機驗證，不能取代正式跨實體電腦的互通性測試。
+
+詳細測試方法與結果請參閱 [測試驗證報告](testing.md)，各項驗收狀態請參閱 [驗收檢查表](verification_checklist.md)。
