@@ -289,6 +289,53 @@ cmd /c fc /b tests\edge_files\audio_odd.wav out\audio_odd.wav
 
 **測試備註：** 目前已確認 C 編碼器可以對此測試檔案產生 86 bytes 的 Huffman 區塊，但尚未取得接收端還原及檔案比對成功的結果，因此不將整體測試標記為 PASS。
 
+### WAV 只有檔頭、零 Sample 測試（2026-10-10）
+
+**測試目的：** 驗證 16-bit PCM WAV 的 `data` chunk 長度為 0、沒有任何音訊 Sample 時，Huffman S16 模式仍能正確編碼、傳輸、解碼並無損還原。
+
+**測試環境：** Windows PowerShell、TCP Loopback `127.0.0.1:5000`。
+
+| 驗證項目 | 實際結果 |
+|---|---|
+| 測試檔案 | `tests/edge_files/audio_header_only.wav` |
+| 原始大小 | 44 bytes |
+| WAV data chunk 長度 | 0 bytes |
+| PCM Sample 數量 | 0 |
+| 傳輸模式 | HUFF |
+| 實際符號模式 | `sym=s16` |
+| Huffman 編碼區塊 | 65 bytes |
+| 實際上線資料 | 118 bytes |
+| 傳輸比例 | 2.6818（268.18%） |
+| 接收端存檔 | 成功，44 bytes |
+| `fc /b` | 找不到相異處 |
+| **整體結果** | **PASS** |
+
+**重現指令**
+
+接收端：
+
+```powershell
+.\textlink.exe recv 5000 out
+```
+
+傳送端：
+
+```powershell
+.\textlink.exe send 127.0.0.1 5000 tests\edge_files\audio_header_only.wav --huff
+```
+
+檔案比對：
+
+```powershell
+cmd /c fc /b tests\edge_files\audio_header_only.wav out\audio_header_only.wav
+```
+
+**測試結論：**
+
+本次測試確認，TextLink 對沒有 PCM Sample 的合法 16-bit WAV，仍可使用 `SYM_S16` 完成 Huffman 編碼與解碼。接收端成功還原 44 bytes 的原始 WAV，且逐 byte 比對完全一致。
+
+由於原始檔案極小，傳輸所需的固定開銷使上線比例達到 268.18%，但這不影響資料還原的正確性。
+
 ### TCP-07：損壞 Huffman Codebook 整合測試（2026-10-09）
 
 **測試目的：** 驗證接收端遇到非法 Huffman Codebook 時，能拒絕解碼、不產生錯誤輸出檔案，並回傳失敗狀態與非零結束碼。
