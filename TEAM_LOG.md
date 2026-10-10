@@ -18,6 +18,13 @@
 | 2026/10/09 | 驗證 Windows MinGW 編譯相容性 | V／整合 | 修正 IPv4 轉換與終端機旗標問題 |
 | 2026/10/09 | 重現 RAW/HUFF 傳輸及檔案比對 | V | 傳輸成功、逐 byte 一致 |
 | 2026/10/09 | 整理測試報告與量測腳本 | V | 更新測試文件與 GitHub |
+| 2026/10/10 | 完成兩台實體電腦 RAW/HUFF 正式量測 | V | 四種檔案、兩種模式、各五次，共 40 次雙機 Benchmark；累計正式量測 80 次 |
+| 2026/10/10 | 雙機功能及檔案完整性驗證 | V／D | TXT/WAV RAW/HUFF 傳輸、SHA-256 驗證、聊天功能及 `--bind` 回歸測試通過 |
+| 2026/10/10 | 修正 Windows 重複監聽 Port 問題 | V／整合 | Windows 使用 `SO_EXCLUSIVEADDRUSE`；第二個 Receiver 正確回報 Port 被占用 |
+| 2026/10/10 | CLI 監聽 Port 邊界驗證 | V | 拒絕 Port 1023、接受 Port 1024，符合課程要求 |
+| 2026/10/10 | 補強 `FILE_END` Payload 驗證 | V | CLI 與 Chat 均能拒絕非法非空結束封包，不產生錯誤輸出檔 |
+| 2026/10/10 | RAW/HUFF 正常傳輸回歸 | V | CLI 與 Chat RAW/HUFF 正常傳檔及確認流程均通過 |
+| 2026/10/10 | 更新壓縮率分析與雙機報告 | V | 補充理論壓縮率、Codebook 成本、40 次雙機效能分析與研究限制 |
 
 ## V — 測試驗證成果
 
@@ -45,9 +52,9 @@
 
 使用四種測試檔案：
 
-- `text_repeat.txt`
-- `text_mixed.txt`
-- `audio_sine.wav`
+- `real_chinese.txt`
+- `real_english.txt`
+- `audio_music_20s.wav`
 - `audio_noise.wav`
 
 每種檔案分別執行 RAW 與 HUFF 模式，每種模式重複五次，共 40 次正式量測。
@@ -71,7 +78,9 @@
 
 ### 測試限制
 
-正式效能量測使用本機 TCP Loopback（127.0.0.1），測得的傳送端總耗時不能直接代表實際跨電腦網路環境的端對端延遲。
+正式效能量測包含 localhost 40 次及兩台實體電腦 40 次。雙機測試使用 Windows 電腦 A（Ethernet，`192.168.0.140`）與電腦 B（Wi-Fi，`192.168.0.188`）。
+
+不同環境的耗時受到電腦效能、網路條件及測試資料版本影響，因此不將兩種環境的量測差異完全歸因於網路頻寬。詳細結果參閱 `docs/testing.md` 及 `docs/compression_report.md`。
 
 ## 其他團隊工作
 

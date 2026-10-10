@@ -38,6 +38,15 @@
 - 整理 `docs/compression_report.md`、分析程式、CSV 及 Excel 工作簿。
 - 更新 `docs/verification_checklist.md`，依照實際測試證據記錄各項驗收狀態。
 
+### 後續整合與驗證成果（2026-10-10）
+
+- 完成兩台實體電腦的 RAW/HUFF 功能回歸，以及 40 次正式雙機 Benchmark，連同 localhost 共取得 80 次正式量測。
+- 修正 Windows Socket 重複監聽問題，使用 `SO_EXCLUSIVEADDRUSE`。
+- 修正 CLI 監聽 Port 驗證，使監聽端符合 1024–65535。
+- 補強 CLI 與 Chat 的非法 `FILE_END` Payload 驗證，新增 `tests/test_invalid_file_end.py`。
+- 完成修改後的 RAW/HUFF CLI 與聊天傳檔回歸測試。
+- 補充 Huffman 壓縮理論分析、雙機效能數據與研究限制。
+
 代表性 Git commits：
 
 | Commit | 工作內容 |
@@ -125,7 +134,8 @@ TextLink 的 Huffman 功能除基本編解碼外，還需要支援 `SYM_BYTE`、
 - `s411386011-art`：測試、Benchmark、異常封包測試、Windows 相容性修正與驗證文件。
 - `陳皓祥`：Frame、UTF-8、Huffman 編解碼與 WAV 邊界處理。
 - `LiJheChen`：Frame 溢位修正、Huffman 安全性改善、回歸測試及介面文件。
-- `s411386008`：P2 角色已確認，具體程式與文件貢獻待依其實際工作補充。
+- `s411386008`（P2）：負責壓縮率分析、效能結果說明與口頭報告。截至本次 Git 紀錄檢查，尚未找到以該成員身分提交的 C 程式修改；實際完成的工作仍須依其本人提供的成果確認。
+- `s411386012-art` 與 `陳皓祥` 為同一位成員的不同 Git 作者身分，相關貢獻合併歸屬陳皓祥。
 
 
 本文件依據 Git commit 紀錄與已完成的驗證工作整理，未確認事項不視為已完成。

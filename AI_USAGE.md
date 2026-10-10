@@ -115,6 +115,25 @@ AI 協助設計 `tests/test_tcp_disconnect.py`，模擬傳送端宣告 4096 byte
 
 測試結果已記錄於 `docs/testing.md`，並作為驗收第 6 項的補充證據。
 
+### 2.8 CLI、Socket 與 FILE_END 協定驗證（2026-10-10）
+
+AI 協助分析 Windows Socket 使用 `SO_REUSEADDR` 可能造成重複監聽的問題，並提出 Windows 使用 `SO_EXCLUSIVEADDRUSE`、POSIX 系統保留 `SO_REUSEADDR` 的修正建議。
+
+AI 亦協助檢查 CLI Port 範圍、`--bind` 行為、連線錯誤處理，以及 `FILE_END` Payload 長度的驗證邏輯。
+
+針對非法 `FILE_END`，AI 協助設計 Python TCP 測試腳本 `tests/test_invalid_file_end.py`，用以發送不符合協定的結束封包。
+
+組員實際完成程式修改、編譯、測試及跨電腦回歸驗證，並確認：
+
+- Windows 重複監聽 Port 時，第二個 Receiver 正確回報錯誤。
+- 監聽 Port 1023 被拒絕，Port 1024 可以正常監聽。
+- `--bind 127.0.0.1` 只允許本機連線。
+- CLI 與 Chat 均拒絕非法非空 `FILE_END`，不產生錯誤的正式輸出檔。
+- 修改後 RAW/HUFF CLI 與聊天傳檔功能仍可正常執行。
+- `mingw32-make test` 結果為 114 PASS、0 FAIL、0 TODO。
+
+相關程式及文件包括 `src/net.c`、`src/main.c`、`src/transfer.c`、`src/chat.c`、`tests/test_invalid_file_end.py` 與 `docs/testing.md`。
+
 ## 3. 人工驗證方式
 
 本專案 V 工作採用以下方式確認 AI 建議的正確性：
