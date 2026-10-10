@@ -77,20 +77,21 @@
 
 ### 3.1 MP4 程式來源與 Huffman 實作說明
 
-本專案的 Huffman 編解碼功能由團隊成員於 TextLink Repository 中自行實作與整合，**未直接沿用或複製任何組員個人 MP4 作業的原始程式碼**。
+本專案的 Huffman 編解碼功能以組員**陳皓祥的個人 MP4 作業**作為部分程式實作與演算法基礎，並由團隊依照 TextLink 的通訊與檔案傳輸需求進行擴充、整合及修正。
 
-Huffman 演算法概念與課程 MP4 作業相關，但本專案依照 Team 1 的需求，完成 BYTE、CHAR、S16 符號處理、Codebook 建立與傳輸、Bitstream 打包及解碼等功能。
+TextLink 的 Huffman 功能除基本編解碼外，還需要支援 `SYM_BYTE`、`SYM_CHAR`、`SYM_S16` 三種符號模式、Codebook 二進位傳輸、WAV 格式解析、特殊邊界資料及錯誤處理。
 
-相關 C 程式實作與修改可透過以下 Git Commit 追溯：
+以下為 TextLink Repository 中可追溯的相關開發紀錄：
 
-| Commit | 實作內容 |
-|---|---|
-| `3278144` | Huffman SYM_BYTE 編解碼 |
-| `f600929` | Huffman SYM_CHAR 編解碼 |
-| `2232c74` | WAV data chunk 奇數長度處理 |
-| `edfed16` | Huffman 建樹及解碼安全性改善 |
+| Commit | 作者 | 工作內容 |
+|---|---|---|
+| `3278144` | 陳皓祥 | Huffman `SYM_BYTE` 編解碼 |
+| `f600929` | 陳皓祥 | Huffman `SYM_CHAR` 編解碼 |
+| `2232c74` | 陳皓祥 | WAV `data` chunk 奇數長度邊界修正 |
+| `edfed16` | LiJheChen | Huffman Tree 建立與解碼安全性改善 |
+| `dc3a506` | s411386011-art | Frame、UTF-8、Huffman 邊界與異常測試 |
 
-**程式來源結論：** 本專案未直接沿用個人 MP4 原始碼，Huffman 功能由團隊於 TextLink 專案中完成實作與整合。
+**程式來源說明：** Huffman 的部分實作參考或沿用陳皓祥個人 MP4 作業，並非全部由團隊從零開始撰寫。TextLink 版本經過團隊後續修改與整合；實際直接沿用的函式及程式碼範圍，仍須以 MP4 與 TextLink 原始碼比對結果為準。
 
 ## 4. 成果與驗證
 
