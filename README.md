@@ -239,118 +239,282 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 
 ## 8. 正式 Benchmark 效能量測
 
-### 8.1 測試資料
+### 8.1 測試目的與資料
 
-本次正式驗收使用四種檔案，每個檔案皆大於 1 MB。
+本專案以 RAW（不壓縮）及 HUFF（Huffman 壓縮）兩種模式，測量 TextLink 傳輸不同資料類型時的壓縮比例、編解碼時間、傳輸時間及有效傳輸速率。
 
-測試資料位於 `benchmark_real/`。
+正式 Benchmark 使用四種檔案，每份原始檔案皆大於 1 MB，包括中文文章、英文文章、音樂 WAV 及高熵雜訊 WAV。
 
-| 測試檔案 | 內容類型 | 原始大小（bytes） |
-|---|---|---:|
-| `real_chinese.txt` | 中文為主的合成自然語言文章 | 1,200,335 |
-| `real_english.txt` | 英文為主的合成自然語言文章 | 1,258,581 |
-| `audio_music_20s.wav` | 20 秒音樂 WAV，16-bit PCM | 3,528,044 |
-| `audio_noise.wav` | 自選高熵雜訊 WAV，16-bit PCM | 1,120,044 |
+本次分別在 localhost 與雙實體電腦區域網路兩種環境進行量測。
 
-中文與英文文字檔為人工合成的自然語言測試語料，並非真實出版文章。音樂 WAV 為 44.1 kHz、16-bit、雙聲道 PCM；雜訊 WAV 為 8 kHz、16-bit、單聲道 PCM。
+| 測試檔案 | 資料類型 | Localhost 原始大小（bytes） | 雙機原始大小（bytes） |
+|---|---|---:|---:|
+| `real_chinese.txt` | 中文為主的合成自然語言文章 | 1,200,335 | 1,202,641 |
+| `real_english.txt` | 英文為主的合成自然語言文章 | 1,258,581 | 1,261,850 |
+| `audio_music_20s.wav` | 音樂 WAV，16-bit PCM | 3,528,044 | 3,528,044 |
+| `audio_noise.wav` | 高熵雜訊 WAV，16-bit PCM | 1,120,044 | 1,120,044 |
+
+中文及英文測試資料為人工合成的自然語言語料，並非真實出版文章。
+
+音樂 WAV 為 44.1 kHz、16-bit PCM、雙聲道、長度 20 秒；雜訊 WAV 為 8 kHz、16-bit PCM、單聲道。
+
+**資料版本注意事項：** Localhost 與雙機測試的中文、英文 TXT 檔案大小不同，因此兩種環境的文字測試並非完全相同的輸入資料。實驗比較時，不能將耗時差異全部歸因於網路環境。
 
 ### 8.2 測試環境與方式
 
-- 測試系統：Windows
-- 網路：localhost（`127.0.0.1:5000`）
-- 傳輸模式：RAW、HUFF
-- 每個檔案及模式：重複五次
-- 正式量測總數：4 × 2 × 5 = **40 次**
-- 統計方法：每組五次取中位數（Median）
+#### 8.2.1 Localhost 測試環境
 
-每次量測記錄傳送端與接收端的 `STATS`，並將原始資料保存為 CSV。
+| 項目 | 設定 |
+|---|---|
+| 測試電腦 | 電腦 A |
+| 作業系統 | Windows |
+| IP | `127.0.0.1` |
+| TCP Port | 5000 |
+| GCC | MinGW.org GCC 6.3.0 |
+| 傳輸環境 | 同一台電腦的 TCP Loopback |
+| 測試模式 | RAW、HUFF |
+| 每組重複次數 | 5 次 |
+| 總量測次數 | 40 次 |
+
+#### 8.2.2 雙實體電腦測試環境
+
+| 項目 | 電腦 A（Receiver） | 電腦 B（Sender） |
+|---|---|---|
+| 作業系統 | Windows | Windows |
+| IPv4 | `192.168.0.140` | `192.168.0.188` |
+| GCC | MinGW.org GCC 6.3.0 | MinGW-Builds GCC 14.2.0 |
+| TCP Port | 5000 | 連線至 A 的 Port 5000 |
+| Git Commit | `0179c758612702dd27618b0132ca893bf193499f` | 相同 Commit |
+| 功能 | 接收、解碼、寫入檔案 | 讀檔、編碼、傳送 |
+
+雙機測試使用區域網路進行 TCP 傳輸，不使用 localhost IP。
+
+實際網路媒介（Wi-Fi、乙太網路或手機熱點）須依測試當日連線方式補充。
+
+#### 8.2.3 正式量測次數
+
+兩種環境皆使用四份測試檔案，每份檔案分別執行 RAW 與 HUFF，每種模式重複五次。
+
+| 測試環境 | 檔案數 | 模式數 | 每組重複次數 | 量測總數 |
+|---|---:|---:|---:|---:|
+| Localhost | 4 | 2 | 5 | 40 |
+| 雙實體電腦 | 4 | 2 | 5 | 40 |
+| **合計** | | | | **80** |
+
+每次量測保存 Sender 與 Receiver 的 STATS，並將原始資料整理成 CSV。
+
+正式報告採用每組五次測量結果的中位數（Median），避免只以單次量測代表整體效能。
+
+兩種環境的原始量測資料分開保存，不覆蓋彼此的 CSV。
 
 ### 8.3 壓縮比例與有效傳輸速率
 
-本專案以實際網路傳輸位元組數（`wire_bytes`）與原始檔案大小（`file_bytes`）計算傳輸比例，並根據各端總耗時換算有效傳輸速率。
+本專案以實際上線傳輸位元組數 `wire_bytes` 與原始檔案大小 `file_bytes` 計算傳輸比例。
+
+`wire_bytes` 包含 Frame Header、檔案協定欄位、Huffman Header、Codebook 及 Bitstream 等實際傳送的資料。
 
 | 指標 | 計算公式 | 說明 |
 |---|---|---|
-| 傳輸比例（ratio） | `wire_bytes / file_bytes` | 小於 1 表示資料量減少 |
-| 壓縮後比例（%） | `ratio × 100` | 壓縮後資料量占原始檔案的百分比 |
-| 節省傳輸量比例（%） | `(1 - ratio) × 100` | 負值代表傳輸量增加 |
-| 傳送端有效速率（MB/s） | `file_bytes / (sender_total_ms × 1000)` | 使用傳送端總耗時 |
-| 接收端有效速率（MB/s） | `file_bytes / (receiver_total_ms × 1000)` | 使用接收端總耗時 |
+| 傳輸比例（ratio） | `wire_bytes / file_bytes` | 小於 1 代表上線資料量小於原始檔案 |
+| 壓縮後比例（%） | `ratio × 100` | 上線資料量占原始檔案的百分比 |
+| 節省傳輸量（%） | `(1 - ratio) × 100` | 負值表示資料量增加 |
+| 傳送端有效速率（MB/s） | `file_bytes / (sender_total_ms × 1000)` | 依傳送端總耗時計算 |
+| 接收端有效速率（MB/s） | `file_bytes / (receiver_total_ms × 1000)` | 依接收端總耗時計算 |
 
-**範例：中文文章 Huffman 傳輸**
+有效傳輸速率採十進位 MB/s，亦即 1 MB = 1,000,000 bytes。
 
-- 原始大小：1,200,335 bytes
-- 實際上線傳輸量：388,786 bytes
-- 傳輸比例：約 0.3239
-- 壓縮後比例：約 32.39%
-- 節省傳輸量：約 67.61%
+#### 範例：雙機中文 TXT Huffman
 
-有效傳輸速率採十進位 MB/s（1 MB = 1,000,000 bytes）。
+- 原始大小：1,202,641 bytes
+- 實際上線資料量：391,389 bytes
+- 傳輸比例：約 0.3254
+- 壓縮後比例：約 32.54%
+- 節省傳輸量：約 67.46%
 
-傳送端與接收端使用各自的 `total_ms` 計算有效速率，**不可直接將兩端耗時相加作為端對端延遲**。此處計算的是包含程式處理時間的有效速率，不等於實際網路頻寬。
+Huffman 可有效減少中文文字檔的上線資料量，但傳輸量減少不必然代表總耗時也會縮短。
 
-### 8.4 正式測試結果
+**注意：** 傳送端及接收端的 `total_ms` 為各自獨立的量測值，不可以相加作為端對端延遲。根據 `total_ms` 換算的有效速率也不等於實際物理網路頻寬。
 
-以下為五次量測的中位數。
+### 8.4 正式 Benchmark 測試結果
 
-| 測試檔案 | HUFF 傳輸比例 | RAW 傳送端總耗時 (ms) | HUFF 傳送端總耗時 (ms) |
+以下結果均為每組五次量測的中位數。
+
+#### 8.4.1 Localhost Benchmark（40 次）
+
+| 測試檔案 | HUFF 傳輸比例 | RAW Sender Total（ms） | HUFF Sender Total（ms） |
 |---|---:|---:|---:|
 | 中文文章 | 32.39% | 35.0 | 51.8 |
 | 英文文章 | 53.96% | 37.1 | 85.0 |
 | 音樂 WAV | 108.51% | 92.8 | 389.1 |
 | 雜訊 WAV | 140.62% | 34.0 | 162.5 |
 
-有效傳輸速率（MB/s，以傳送端總耗時中位數換算）：
+Localhost 傳送端有效傳輸速率：
 
-| 測試檔案 | RAW (MB/s) | HUFF (MB/s) |
+| 測試檔案 | RAW（MB/s） | HUFF（MB/s） |
 |---|---:|---:|
 | 中文文章 | 34.30 | 23.17 |
 | 英文文章 | 33.92 | 14.81 |
 | 音樂 WAV | 38.02 | 9.07 |
 | 雜訊 WAV | 32.94 | 6.89 |
 
+在 localhost 環境中，四份檔案的 RAW 傳送端總耗時中位數均低於 HUFF。
+
+#### 8.4.2 雙實體電腦 Benchmark（40 次）
+
+雙機傳輸方向為電腦 B（`192.168.0.188`）至電腦 A（`192.168.0.140`）。
+
+| 測試檔案 | HUFF 傳輸比例 | RAW Sender Total（ms） | HUFF Sender Total（ms） |
+|---|---:|---:|---:|
+| 中文文章 | 32.54% | 74.6 | 113.2 |
+| 英文文章 | 54.15% | 136.9 | 116.5 |
+| 音樂 WAV | 108.51% | 214.7 | 3,956.0 |
+| 雜訊 WAV | 140.62% | 136.0 | 7,059.5 |
+
+雙機接收端總耗時中位數：
+
+| 測試檔案 | RAW Receiver Total（ms） | HUFF Receiver Total（ms） |
+|---|---:|---:|
+| 中文文章 | 71.7 | 87.4 |
+| 英文文章 | 133.0 | 80.5 |
+| 音樂 WAV | 209.8 | 328.0 |
+| 雜訊 WAV | 132.6 | 150.4 |
+
+雙機正式量測已完成四種檔案、RAW/HUFF 各五次，共 40 筆傳輸。
+
+全部 40 筆 Sender 與 Receiver STATS 均已配對驗證，兩端記錄的 `mode`、`file_bytes` 與 `wire_bytes` 一致。
+
+此外，雙機功能驗收另以 SHA-256 驗證 TXT/WAV 接收檔案與傳送端原始檔案內容一致，音樂 WAV 也已確認可以正常播放。
+
 ### 8.5 實驗結果分析
 
-**中文文章**
+#### 8.5.1 中文文章
 
-Huffman 將傳輸量降低約 67.61%，但傳送端總耗時中位數由 RAW 的 35.0 ms 增加至 51.8 ms。
+中文文章在兩種環境下均具有良好的 Huffman 壓縮效果。
 
-**英文文章**
+- Localhost：HUFF 傳輸比例為 32.39%，減少約 67.61% 的上線資料量。
+- 雙機：HUFF 傳輸比例為 32.54%，減少約 67.46% 的上線資料量。
 
-Huffman 將傳輸量降低約 46.04%，但傳送端總耗時由 37.1 ms 增加至 85.0 ms。
+然而，雙機測試中的傳送端總耗時由 RAW 的 74.6 ms 增加至 HUFF 的 113.2 ms。
 
-**音樂 WAV**
+結果顯示，中文 Huffman 雖能有效節省傳輸量，但本次測試中額外的編碼處理時間仍影響整體完成時間。
 
-Huffman 的傳輸比例為 108.51%，表示壓縮後反而增加約 8.51% 的資料量，且編解碼帶來額外運算成本。
+#### 8.5.2 英文文章
 
-**雜訊 WAV**
+英文文章在兩種環境下亦具有壓縮效果。
 
-Huffman 的傳輸比例達 140.62%，顯示高熵音訊資料不一定適合使用目前實作的 Huffman 格式。
+- Localhost：HUFF 傳輸比例為 53.96%。
+- 雙機：HUFF 傳輸比例為 54.15%。
+
+特別的是，雙機英文 TXT 的傳送端總耗時中位數：
+
+- RAW：136.9 ms
+- HUFF：116.5 ms
+
+**在本次雙機英文文章測試中，HUFF 的傳送端總耗時中位數低於 RAW，表示壓縮後確實出現傳送端完成時間縮短的現象。**
+
+不過 localhost 的英文文章測試則是 RAW 較快，且兩個環境的測試檔案大小、傳送端電腦及編譯環境不同，因此不能僅憑這兩組結果推論 Huffman 在所有網路環境中都會比較快。
+
+#### 8.5.3 音樂 WAV
+
+音樂 WAV 使用 Huffman S16 符號模式後，HUFF 上線資料量為原始檔案的 108.51%，增加約 8.51%。
+
+雙機測試中：
+
+- RAW Sender Total 中位數：214.7 ms
+- HUFF Sender Total 中位數：3,956.0 ms
+
+進一步檢查五次 HUFF 原始數據，發現 `encode_ms` 中位數為 3,624.6 ms，明顯高於 `send_ms` 中位數 233.7 ms。
+
+因此本次雙機音樂 WAV 的 HUFF 效能瓶頸主要出現在傳送端編碼處理階段。
+
+#### 8.5.4 雜訊 WAV
+
+雜訊 WAV 的 HUFF 傳輸比例達到 140.62%，代表上線資料量增加約 40.62%。
+
+雙機測試中：
+
+- RAW Sender Total 中位數：136.0 ms
+- HUFF Sender Total 中位數：7,059.5 ms
+- HUFF Encode 中位數：6,890.7 ms
+- HUFF Send 中位數：97.9 ms
+
+結果顯示，雜訊 WAV 不僅無法透過目前的 S16 Huffman 格式減少傳輸量，傳送端也需要付出顯著的編碼運算成本。
+
+由於此檔案接近均勻分布且包含大量不同的 S16 Sample 值，Codebook 的大小與符號處理成本可能影響效能，但具體瓶頸仍須透過程式分析進一步確認。
+
+#### 8.5.5 雙機 WAV HUFF 的額外控制實驗
+
+為釐清雙機 WAV 編碼耗時偏高的現象，另外在電腦 B 進行 `127.0.0.1:5001` 的 localhost 控制測試。
+
+以 `audio_noise.wav`、HUFF S16 模式進行單次測試，得到：
+
+| 指標 | 電腦 B Localhost 單次測試 |
+|---|---:|
+| Encode | 7,568.2 ms |
+| Send | 23.3 ms |
+| Decode | 325,680.8 ms |
+| Sender Total | 約 33,278.2 ms |
+| Receiver Total | 325,708.6 ms |
+
+該次測試最終成功完成傳輸及存檔，但電腦 B 的本機解碼時間明顯異常偏高。
+
+由於雙機正式測試與此控制實驗使用相同的傳送端電腦，而編碼時間仍達數秒，結果支持編碼耗時主要來自本機處理，而非純粹由區域網路頻寬造成。
+
+不過，電腦 A 與電腦 B 使用不同的硬體環境及 GCC 版本，因此尚不能確認異常效能差異的直接原因。
+
+**此控制實驗屬於額外分析，不納入正式 80 次 Benchmark 統計。**
 
 ### 8.6 實驗結論與限制
 
-在本次 localhost 測試中：
+根據 localhost 與雙實體電腦兩種環境、共 80 次正式量測，可得到以下結論：
 
-1. Huffman 對中文與英文自然語言測試語料能有效減少傳輸量。
-2. Huffman 對部分音訊資料不一定能有效壓縮，並可能增加上線傳輸量。
-3. 四種檔案的 RAW 傳送端總耗時中位數均低於 HUFF。
-4. 編碼、解碼與 Codebook 開銷會影響實際傳輸效能。
-5. localhost 測試結果不能直接代表跨電腦網路環境的效能。
+1. Huffman 對中文與英文自然語言測試資料具有明顯壓縮效果，能有效減少實際上線資料量。
+2. 壓縮後資料量較小，不代表整體傳輸時間一定較短；仍須考慮編碼、傳送、解碼及通訊協定開銷。
+3. Localhost 的四種測試檔案均由 RAW 取得較低的傳送端總耗時中位數。
+4. 雙機環境下，英文 TXT 的 HUFF 傳送端總耗時中位數低於 RAW；其餘三種檔案則為 RAW 較快。
+5. 音樂及雜訊 WAV 的 Huffman S16 模式出現資料膨脹，其中高熵雜訊 WAV 的膨脹比例較大。
+6. 雙機 WAV HUFF 的大量耗時集中於編碼階段，顯示目前實作仍有優化空間。
+7. 雙機 TXT/WAV 的 RAW/HUFF 傳輸均已通過 SHA-256 完整性驗證，音樂 WAV 亦可正常播放。
+8. 兩種網路環境的測試檔案版本及執行電腦不完全相同，應避免將耗時差異完全解釋為網路因素。
 
-詳細數據請參閱：
+**實驗限制：**
 
-- [正式原始量測 CSV](benchmarks/formal_raw_40.csv)
-- [正式中位數 CSV](benchmarks/formal_medians.csv)
-- [正式 Benchmark Excel](benchmarks/formal_benchmark_40.xlsx)
-- [Benchmark 方法與資料說明](benchmarks/README.md)
+- Localhost 與雙機的中文、英文 TXT 檔案大小不同。
+- Localhost 測試的傳送端主要為電腦 A；雙機測試的傳送端為電腦 B。
+- 電腦 A 使用 GCC 6.3.0；電腦 B 使用 GCC 14.2.0。
+- 尚未在相同硬體條件下進行不同 GCC 版本的控制比較。
+- 本次雙機測試未針對網路頻寬、延遲或封包遺失率進行獨立量測。
+- `sender_total_ms` 與 `receiver_total_ms` 具有不同計時區間，不能直接相加作為端對端延遲。
+- 本次結果適用於已測試的資料、電腦及網路條件，不代表所有環境下的效能。
+
+**正式原始數據與工作簿：**
+
+- [Localhost 原始量測 CSV](benchmarks/formal_raw_40.csv)
+- [Localhost 中位數 CSV](benchmarks/formal_medians.csv)
+- [Localhost Benchmark Excel](benchmarks/formal_benchmark_40.xlsx)
+- [雙機原始量測 CSV](benchmarks/two_pc_raw_40.csv)
+- [雙機中位數 CSV](benchmarks/two_pc_medians.csv)
+- [兩種環境 Benchmark Excel](benchmarks/TextLink_Benchmark_80.xlsx)
+- [Benchmark 測試方法](benchmarks/README.md)
 
 ### 8.7 Huffman 壓縮率與理論分析
 
-除正式 Benchmark 外，本專案另外計算 Shannon Entropy（H）、Huffman 平均碼長（L）、Codebook 大小及純 Bitstream 比例，並比較中文、英文的 CHAR/BYTE，以及 WAV 的 S16/BYTE 編碼效果。
+除正式 Benchmark 外，本專案另行分析 Huffman 編碼的理論與實際壓縮效果，包括：
 
-根據正式測試資料建立的簡化模型，中文與英文文章的理論損益平衡頻寬分別約為 **172.70 Mbps** 與 **73.59 Mbps**。上述數值為理論估計，尚未經不同頻寬的實際網路測試驗證。
+- Shannon Entropy（H）
+- Huffman 平均碼長（L）
+- Codebook 大小與比例
+- 純 Bitstream 與完整上線資料量的差異
+- 中文及英文的 CHAR/BYTE 符號模式比較
+- WAV 的 S16/BYTE 符號模式比較
+- 短聊天訊息的 Huffman 固定開銷
+- RAW/HUFF 理論損益平衡頻寬
 
-完整數據、計算公式及分析結論請參閱：
+根據先前 localhost 量測資料建立的簡化模型，中文文章與英文文章的理論損益平衡頻寬分別約為 **172.70 Mbps** 與 **73.59 Mbps**。
+
+這些數值是基於當時的檔案版本與程式耗時建立的理論估計，並未經不同頻寬條件的實驗驗證，也不能直接套用到本次雙機 Benchmark。
+
+詳細公式、Codebook 分析及實驗結論請參閱：
 
 - [Huffman 壓縮率完整分析報告](docs/compression_report.md)
 - [Huffman 壓縮分析 Excel](benchmarks/TextLink_Huffman_Compression_Analysis.xlsx)

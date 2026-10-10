@@ -48,6 +48,12 @@ BYTE fallback 主要適用於檔案編碼：當文字資料不符合 UTF-8 要�
 | data_size | 8 | big-endian；之後所有 FILE_DATA 的 payload 總 bytes 數；raw 時必須等於 orig_size |
 | name | 其餘 | 檔名，不含路徑；接收端只保留 `0-9 A-Z a-z . - _`，其餘換成 `_` |
 
+`FILE_BEGIN` 的固定 Payload 為 17 bytes，之後必須至少包含 1 byte 的檔名。
+
+檔名以 UTF-8 bytes 傳送，不包含 `\0` 結尾；接收端最多讀取前 127 bytes 作為原始檔名，並進行安全字元過濾。傳送端及接收端皆不得將原始檔案路徑直接用於目的地寫入。
+
+`orig_size` 和 `data_size` 都不能超過 64 MiB。RAW 模式還要求兩者相等，不符合條件時拒絕該 `FILE_BEGIN`。
+
 ### 0x11 FILE_DATA（傳送端 → 接收端）
 
 傳輸資料的一段，每個最多 65,536 bytes，依序接起來共 data_size bytes。
@@ -58,6 +64,20 @@ BYTE fallback 主要適用於檔案編碼：當文字資料不符合 UTF-8 要�
 
 傳送端 → 接收端：payload 為空，表示資料送完。
 接收端 → 傳送端：payload 1 byte，0＝解碼與寫檔成功、其他＝失敗。傳送端收到 0 才以結束碼 0 結束。
+
+**檔案傳輸確認機制**
+
+傳送端送出 `FILE_END` 後，必須等待接收端的確認 Frame。確認 Frame 的 Type 為 `0x12`，Payload 為 1 byte，其中 `0x00` 表示接收、解碼及存檔成功；`0x01` 表示處理失敗。
+
+只有收到 Type 正確、Payload 長度為 1 byte 且值為 `0x00` 的確認 Frame，命令列傳送端才以結束碼 0 回報成功。其他回覆或接收失敗都視為傳輸失敗。
+
+接收端收到異常 Huffman Codebook 時，應拒絕解碼並回報失敗，而非產生錯誤的正式輸出檔案。
+
+**FILE_END 格式與驗證**
+
+依通訊協定設計，傳送端送出的 `FILE_END` Payload 應為空；接收端回覆的 `FILE_END` Payload 則固定為 1 byte，其中 `0x00` 表示成功，`0x01` 表示失敗。
+
+目前命令列接收端會檢查檔案傳輸是否已開始，但尚未強制拒絕帶有非空 Payload 的傳送端 `FILE_END`。因此，非空 `FILE_END` 的拒收行為屬於尚待加強的協定驗證項目，不應列為已通過測試。
 
 ## 4. Huffman 區塊格式（`huff_encode` 的輸出）
 
