@@ -511,7 +511,17 @@ py .\tests\test_tcp_bad_codebook.py
 
 **結論：** 專案可在本次測試使用的 Windows / MinGW 環境中，從乾淨的 Git Clone 重新建置並通過全部單元測試。
 
-驗證 Commit SHA：`（填入實際 git rev-parse HEAD 的完整 SHA）`
+**乾淨 Clone 建置驗證（2026-10-10）**
+
+- 驗證目錄：`textlink-clean-test`
+- 驗證 Commit SHA：`e75525d2a6338209e2a9be24248c3bd9ad534026`
+- 建置指令：`mingw32-make clean`、`mingw32-make`
+- 測試指令：`mingw32-make test`
+- 編譯結果：成功，未出現 GCC Warning
+- 單元測試結果：114 PASS、0 FAIL、0 TODO
+- 測試結束碼：`0`
+
+本次驗證對應上述 Commit。主專案目前的 Commit 可能較新，因此完整的最終版本驗證仍須以提交後的 HEAD 為準。
 
 本測試證明目前環境中的建置可重現性，不代表已驗證所有作業系統及編譯器版本。
 
@@ -1085,7 +1095,7 @@ TextLink 在 RAW 檔案傳輸尚未完成時，若傳送端提前關閉 TCP 連�
 - [x] 完成 Shannon Entropy、Huffman Codebook 與壓縮率分析。
 - [x] 完成雙機測試環境、IP、GCC 版本及網路媒介記錄。
 - [x] 在已驗證的 Windows MinGW 環境完成乾淨 Clone 編譯及 114 PASS 測試。
-- [ ] 補齊乾淨 Clone 驗證時的完整 Commit SHA 與必要測試證據。
+- [x] 補齊乾淨 Clone 驗證時的完整 Commit SHA 與必要測試證據。
 - [ ] 確認最終 Repository 文件及測試成果皆已 Push 到 GitHub。
 - [ ] 將正式 Benchmark 圖表及效能分析整合至 `slides.pdf`。
 - [ ] 與其他組員確認最終分工、程式貢獻及口頭展示內容。
