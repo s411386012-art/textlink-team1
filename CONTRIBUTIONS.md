@@ -46,6 +46,8 @@
 - 補強 CLI 與 Chat 的非法 `FILE_END` Payload 驗證，新增 `tests/test_invalid_file_end.py`。
 - 完成修改後的 RAW/HUFF CLI 與聊天傳檔回歸測試。
 - 補充 Huffman 壓縮理論分析、雙機效能數據與研究限制。
+- 新增 TCP-08 逐 byte 傳送測試，將 5 個 Frame 共 4,155 bytes 分成 4,155 次寫入，成功還原 4,096 bytes。
+- 完成 20 MiB 單一符號二進位檔案的 RAW/HUFF localhost 傳輸測試，兩種模式均逐 byte 還原成功。
 
 代表性 Git commits：
 
@@ -118,7 +120,7 @@ TextLink 的 Huffman 功能除基本編解碼外，還需要支援 `SYM_BYTE`、
 
 - 單元測試：114 PASS、0 FAIL、0 TODO。
 - TCP 異常輸入：已執行 TCP-01～TCP-04，結果記錄於 `docs/testing.md`。
-- 效能量測：40 次正式 RAW/HUFF 測試。
+- 效能量測：完成 localhost 40 次及雙實體電腦 40 次正式 RAW/HUFF Benchmark，合計 80 次；保存原始 CSV、中位數及兩端 STATS。
 - 檔案完整性：RAW 與 HUFF 傳輸後均完成逐 byte 比對。
 - 測試程式、量測腳本、原始數據及文件已納入 Git 版本管理。
 
@@ -126,7 +128,7 @@ TextLink 的 Huffman 功能除基本編解碼外，還需要支援 `SYM_BYTE`、
 
 - P1、P2：負責整理專案技術內容與效能分析，準備 10 分鐘口頭報告。
 - D：負責整合與展示聊天、RAW/HUFF 檔案傳輸功能。
-- V：負責測試案例、114 項單元測試、TCP 異常輸入測試及 40 次效能量測。
+- V：負責測試案例、114 項單元測試、TCP 異常輸入測試、80 次正式效能量測及資料分析。
 - 團隊共同確認程式可編譯、功能可執行，並準備評測當天的程式操作與問題回答。
 
 ## 6. Git 貢獻紀錄

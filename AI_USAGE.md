@@ -134,6 +134,18 @@ AI 亦協助檢查 CLI Port 範圍、`--bind` 行為、連線錯誤處理，以�
 
 相關程式及文件包括 `src/net.c`、`src/main.c`、`src/transfer.c`、`src/chat.c`、`tests/test_invalid_file_end.py` 與 `docs/testing.md`。
 
+### 2.9 TCP 逐 byte 與 20 MiB 大檔案測試（2026-10-10）
+
+AI 協助檢查 `tests/test_tcp_stream.ps1`，提出保留原有 TCP-05、TCP-06 並新增 TCP-08 逐 byte 寫入測試的修改建議。
+
+組員實際執行 TCP-08，將五個 Frame 共 4,155 bytes 以每次 1 byte 的方式寫入 TCP Stream。接收端成功還原 4,096 bytes、回覆成功 ACK，且 `fc /b` 比對完全一致。
+
+AI 亦協助提供 PowerShell 產生 20 MiB 單一符號測試檔案的方法，以及 RAW/HUFF 傳輸與檔案比對指令。初版陣列填值語法無法在本機 PowerShell 執行，經改用 `for` 迴圈後完成測試資料產生。
+
+組員實際驗證 RAW/HUFF 兩種模式均成功傳輸 20,971,520 bytes，接收檔案與原始檔案逐 byte 相同。
+
+以上結果為 localhost 的補充功能測試，不納入原有 80 次正式 Benchmark。
+
 ## 3. 人工驗證方式
 
 本專案 V 工作採用以下方式確認 AI 建議的正確性：
