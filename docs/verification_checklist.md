@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 0 | 雙機指定 IP/Port 連線 | PASS（雙機） | 電腦 B `192.168.0.188` 連線至電腦 A `192.168.0.140:5000`，TCP 連線及資料傳輸成功 |
 | 1 | RAW/HUFF 聊天（中文、英文、Emoji、4-byte UTF-8） | PASS（雙機） | 雙機聊天截圖；中文、英文及 Emoji 正確傳送，RAW/HUFF 切換成功 |
-| 2 | TCP 半包與黏包 | PASS（本機） | TCP-05、TCP-06；拆包與黏包均成功還原 4096 bytes，ACK 成功 |
+| 2 | TCP 半包與黏包 | PASS（本機） | TCP-05、TCP-06；拆包與黏包均成功還原 4096 bytes，ACK 成功;另新增 TCP-08，將五個 Frame 共 4,155 bytes 以每次 1 byte 的方式進行 4,155 次 TCP Stream 寫入。接收端成功還原 4,096 bytes，收到成功 ACK，且 fc /b 比對完全一致 |
 | 3 | TXT：CLI `send/recv` 與聊天 `/send`；RAW/HUFF 無損傳輸 | PASS（雙機） | 中文及英文 TXT CLI RAW/HUFF 傳輸成功；中文 TXT 聊天 `/send` RAW/HUFF 成功；SHA-256 一致 |
 | 4 | WAV：CLI `send/recv` 與聊天 `/send`；RAW/HUFF 無損傳輸及播放 | PASS（雙機） | 音樂 WAV CLI 與聊天 `/send` RAW/HUFF 成功，SHA-256 一致且可播放；雜訊 WAV CLI RAW/HUFF SHA-256 一致 |
 | 5 | 空檔、單符號、256 bytes、BOM/CRLF、特殊 WAV、BYTE fallback | PASS（已測案例） | `tests/edge_files/` 邊界資料及本機測試；奇數 WAV、零 Sample WAV 等補充案例 |

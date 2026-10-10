@@ -150,7 +150,7 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 - 本次未搭配 AddressSanitizer 或其他記憶體分析工具。
 - 此四項 TCP 測試不包含在 114 項離線單元測試的數量內。
 
-### TCP-05／TCP-06：TCP 半包與黏包測試
+### TCP-05／TCP-06／TCP-08：TCP 半包、黏包與逐 byte 傳送測試
 
 **測試環境：** Windows PowerShell、TCP Loopback `127.0.0.1:5000`。
 
@@ -160,6 +160,7 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 |---|---|---|
 | TCP-05 | 將 5 個 Frame、合計 4,155 bytes 拆成 385 次 TCP 寫入 | 成功接收 4,096 bytes、收到成功 ACK，`fc /b` 無差異 |
 | TCP-06 | 將 5 個 Frame、合計 4,155 bytes 合併為一次 TCP 寫入 | 成功接收 4,096 bytes、收到成功 ACK，`fc /b` 無差異 |
+| TCP-08 | 將 5 個 Frame、合計 4,155 bytes，以每次 1 byte 的方式寫入 TCP Stream，共 4,155 次寫入 | 成功接收 4,096 bytes、收到成功 ACK，`fc /b` 無差異 |
 
 **重現指令：**
 
@@ -174,6 +175,7 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_stream.ps1 -Case TCP-05
 powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_stream.ps1 -Case TCP-06
+powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_stream.ps1 -Case TCP-08
 ```
 
 每個案例分別執行，不可在同一個接收端程序中連續執行。
@@ -183,6 +185,7 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_stream.ps1 -Case TCP-0
 ```powershell
 cmd /c fc /b "$env:TEMP\tcp_stream_05.bin" out\tcp_stream_05.bin
 cmd /c fc /b "$env:TEMP\tcp_stream_06.bin" out\tcp_stream_06.bin
+cmd /c fc /b "$env:TEMP\tcp_stream_08.bin" out\tcp_stream_08.bin
 ```
 
 兩項測試均顯示「FC: 找不到相異處」。
@@ -1207,6 +1210,36 @@ py -3 .\tests\test_invalid_file_end.py 5013
 
 此腳本僅負責產生異常封包；PASS/FAIL 仍須透過接收端輸出及檔案存在狀態確認。
 
+## 20 MiB 大檔案 RAW/HUFF 完整傳輸測試（2026-10-10）
+
+### 測試目的與環境
+
+為確認 TextLink 能處理接近課程評測上限的大型檔案，本次使用 20 MiB（20,971,520 bytes）的單一符號二進位檔案，分別進行 RAW 與 HUFF 傳輸，並驗證檔案完整性。
+
+測試環境為 Windows PowerShell，使用 TCP Loopback `127.0.0.1:5000`。測試檔案為 `%TEMP%\textlink_20m.bin`，內容由 20,971,520 個 ASCII `A`（`0x41`）組成。
+
+### 測試結果
+
+| 項目 | RAW | HUFF |
+|---|---:|---:|
+| 原始檔案大小 | 20,971,520 bytes | 20,971,520 bytes |
+| 上線資料量 | 20,973,163 bytes | 2,621,707 bytes |
+| STATS ratio | 1.0001 | 0.1250 |
+| Huffman 符號模式 | none | byte |
+| Sender total_ms | 584.8 ms | 255.8 ms |
+| Receiver total_ms | 578.3 ms | 152.2 ms |
+| 接收檔案大小 | 20,971,520 bytes | 20,971,520 bytes |
+| `fc /b` | 找不到相異處 | 找不到相異處 |
+| 測試結果 | **PASS** | **PASS** |
+
+### 測試結論與限制
+
+本次測試證實，TextLink 可以在 localhost 環境下使用 RAW 與 HUFF 模式，完整傳輸 20 MiB 的單一符號二進位檔案，且接收端逐 byte 還原結果與原始檔案相同。
+
+HUFF 模式使用 `SYM_BYTE`，上線傳輸比例為 12.50%，顯示單一符號資料具有高度可壓縮性。
+
+本次測試僅使用一份高度重複的資料檔案，每種模式各執行一次，不納入正式 80 次 Benchmark，也不代表已驗證所有 20 MB 檔案、不同資料分布或雙實體電腦的大檔案傳輸效能。
+
 ## 11. 提交前驗證清單
 
 - [x] 新增 V 邊界與異常輸入單元測試。
@@ -1227,6 +1260,8 @@ py -3 .\tests\test_invalid_file_end.py 5013
 - [x] 完成雙機測試環境、IP、GCC 版本及網路媒介記錄。
 - [x] 在已驗證的 Windows MinGW 環境完成乾淨 Clone 編譯及 114 PASS 測試。
 - [x] 補齊乾淨 Clone 驗證時的完整 Commit SHA 與必要測試證據。
+- [x] 完成 TCP-08 逐 byte TCP Stream 寫入測試，4,155 次寫入並逐 byte 還原成功。
+- [x] 完成 20 MiB 單一符號二進位檔案 RAW/HUFF localhost 無損傳輸測試。
 - [ ] 確認最終 Repository 文件及測試成果皆已 Push 到 GitHub。
 - [ ] 將正式 Benchmark 圖表及效能分析整合至 `slides.pdf`。
 - [ ] 與其他組員確認最終分工、程式貢獻及口頭展示內容。

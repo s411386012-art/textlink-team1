@@ -2,7 +2,7 @@
 # Windows PowerShell 5.1 compatible. Start textlink.exe recv 5000 out separately.
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('TCP-05', 'TCP-06')]
+    [ValidateSet('TCP-05', 'TCP-06', 'TCP-08')]
     [string]$Case,
     [string]$HostIP = '127.0.0.1',
     [int]$Port = 5000
@@ -35,7 +35,11 @@ function Read-Exactly {
 }
 
 # Distinct file names keep the output of each test separate.
-$fileName = if ($Case -eq 'TCP-05') { 'tcp_stream_05.bin' } else { 'tcp_stream_06.bin' }
+$fileName = switch ($Case) {
+    'TCP-05' { 'tcp_stream_05.bin' }
+    'TCP-06' { 'tcp_stream_06.bin' }
+    'TCP-08' { 'tcp_stream_08.bin' }
+}
 $sourceFile = Join-Path $env:TEMP $fileName
 [byte[]]$data = New-Object byte[] 4096
 for ($i = 0; $i -lt $data.Length; $i++) {
@@ -87,6 +91,14 @@ try {
             Start-Sleep -Milliseconds 2
         }
         Write-Host "[$Case] Fragmented $($allBytes.Length) bytes across $j TCP writes."
+    }
+    elseif ($Case -eq 'TCP-08') {
+        # Send one byte per TCP stream write.
+        # TCP may still combine writes internally; this verifies application-level writes.
+        for ($i = 0; $i -lt $allBytes.Length; $i++) {
+            $stream.Write($allBytes, $i, 1)
+        }
+        Write-Host "[$Case] Sent $($allBytes.Length) bytes using one-byte writes."
     }
     else {
         # One contiguous socket write containing five complete frames.
