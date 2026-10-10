@@ -28,7 +28,10 @@
 - TCP Port：`5000`
 - 網路：兩台實體電腦、區域網路
 - 傳輸協定：TCP
-- 實際 OS、網路連線方式及兩端 Git Commit SHA：待補
+- 電腦 A：Windows，Ethernet，IP `192.168.0.140`
+- 電腦 B：Windows，Wi-Fi，IP `192.168.0.188`
+- 正式雙機 Benchmark 兩端 Git Commit：`0179c758612702dd27618b0132ca893bf193499f`
+- 備註：後續 Socket 修正與 CLI 回歸驗證使用更新版本；不將不同程式版本的測試結果視為同一次 Benchmark。
 
 ### 雙機功能驗收結果
 
@@ -51,3 +54,48 @@ TextLink 已在兩台實體電腦之間完成 TCP 連線、RAW/HUFF 文字聊天
 測試中的檔案均以 SHA-256 比對確認傳送前及接收後內容相同。音樂 WAV 可正常播放，聊天介面在傳送大型檔案後仍可持續雙向通訊。
 
 本節為跨電腦功能驗證；正式效能量測的重複次數、環境及結果應另行記錄，不與 localhost Benchmark 混用。
+
+## CLI 與 Socket 修正後回歸驗證（2026-10-10）
+
+### 命令列介面驗證
+
+| 測試項目 | 結果 |
+|---|---|
+| 非法 IPv4 位址 | PASS，顯示錯誤，Exit Code 1 |
+| 非法 Port 0、70000 | PASS，Exit Code 2 |
+| 監聽 Port 1023 | PASS，`recv`、`chat server` 均拒絕，Exit Code 2 |
+| 監聽 Port 1024 | PASS，可成功監聽 |
+| Port 被占用 | PASS，第二個 Receiver 顯示 WSA error 10048，Exit Code 1 |
+| 未啟動 Receiver 時連線 | PASS，顯示連線失敗，Exit Code 1 |
+| 10 秒 TCP 連線逾時機制 | 已檢查程式碼；未實測完整逾時等待 |
+| 不指定模式時預設 HUFF | PASS（雙機） |
+| `/raw`、`/huff`、`/quit` | PASS（雙機） |
+
+### Windows Socket 修正
+
+原本 Windows 監聽 Socket 使用 `SO_REUSEADDR`，測試時發現第二個 Receiver 可以嘗試重複監聽相同 Port。
+
+修正後，Windows 改用 `SO_EXCLUSIVEADDRUSE`，Linux/macOS 保留 `SO_REUSEADDR`，並檢查 `setsockopt()` 回傳值。
+
+重新測試 Port 5004，第二個 Receiver 被拒絕，顯示 `WSA error 10048`，Exit Code 為 1。
+
+### 雙機回歸測試
+
+| 項目 | 結果 |
+|---|---|
+| B → A RAW 傳輸 | PASS，SHA-256 一致 |
+| B → A HUFF 傳輸 | PASS，SHA-256 一致 |
+| `--bind 192.168.0.140` | PASS，B 可連線 |
+| `--bind 127.0.0.1` | PASS，A 本機可連線、B 遠端連線被拒絕 |
+| 預設 HUFF 聊天 | PASS |
+| 中文、英文、Emoji 聊天 | PASS |
+| `/raw`、`/huff`、`/quit` | PASS |
+| Receiver 斷線錯誤處理 | 已驗證接收失敗時不產生不完整正式輸出檔 |
+
+### 最終單元測試
+
+Windows 修改完成後重新執行 `mingw32-make test`：
+
+**PASS 114、FAIL 0、TODO 0。**
+
+正式雙機 Benchmark 的 40 次測試及原始結果另外保留；後續功能回歸測試並未重新執行正式效能量測。

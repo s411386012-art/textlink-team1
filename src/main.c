@@ -68,7 +68,7 @@ static int usage(void) {
         "  %s send <ip> <port> <file> [--raw|--huff]            送一個檔案\n"
         "\n"
         "  <ip>        對方電腦的 IPv4 位址，例如 192.168.1.23；同一台電腦測試用 127.0.0.1\n"
-        "  <port>      1–65535，建議 1024 以上\n"
+        "  <port>      1–65535；監聽端須使用 1024–65535\n"
         "  --bind <ip> 監聽端只聽指定的本機 IP；不給就是 0.0.0.0（所有網路介面）\n"
         "  --raw       不壓縮        --huff  Huffman 壓縮（預設）\n"
         "\n"
@@ -133,6 +133,12 @@ int main(int argc, char *argv[]) {
     const char *port_str = is_chat_server ? pos[2] : is_chat_client ? pos[3] : is_recv ? pos[1] : pos[2];
     int port = net_parse_port(port_str);
     if (port < 0) { fprintf(stderr, "錯誤: port 要是 1–65535 的整數：%s\n", port_str); return 2; }
+
+    /* 監聽端必須使用 1024–65535，符合課程規格。 */
+    if ((is_chat_server || is_recv) && port < 1024) {
+        fprintf(stderr, "錯誤: 監聽 port 必須介於 1024–65535：%s\n", port_str);
+        return 2;
+    }
 
     if (net_init() != TL_OK) return 1;
 

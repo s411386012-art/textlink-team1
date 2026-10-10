@@ -1076,6 +1076,79 @@ TextLink 在 RAW 檔案傳輸尚未完成時，若傳送端提前關閉 TCP 連�
 
 本測試為中途斷線的本機整合測試，不代表已涵蓋所有斷線時機或網路故障型態。
 
+## 命令列介面與 Socket 修正回歸驗證（2026-10-10）
+
+### 測試目的
+
+確認 TextLink 符合課程要求的命令列介面，包括 IP／Port 參數、監聽位址、RAW／HUFF 模式、錯誤處理、連線逾時機制及正常離開行為。另針對 Windows Socket 重複綁定問題進行修正及雙實體電腦回歸驗證。
+
+### CLI 參數與異常情境
+
+| 測試項目 | 測試結果 | 判定 |
+|---|---|---|
+| 非法 IPv4 `999.999.999.999` | 顯示 IP 格式錯誤，Exit Code 1 | PASS |
+| Port 0 | 拒絕執行，Exit Code 2 | PASS |
+| Port 70000 | 拒絕執行，Exit Code 2 | PASS |
+| `recv 1023` | 拒絕監聽，Exit Code 2 | PASS |
+| `chat server 1023` | 拒絕監聽，Exit Code 2 | PASS |
+| `recv 1024 --bind 127.0.0.1` | 成功監聽指定本機位址 | PASS |
+| Port 已被占用 | 第二個 Receiver 顯示 WSA error 10048，Exit Code 1 | PASS |
+| 沒有 Receiver 監聽 | Sender 顯示連線失敗，Exit Code 1 | PASS |
+| 預設 HUFF 模式 | 雙機聊天啟動時不指定壓縮參數，預設為 HUFF | PASS |
+| `/raw`、`/huff` | 雙機聊天中成功切換模式 | PASS |
+| `/quit` | 雙機聊天正常離開 | PASS |
+
+### Windows Socket 重複綁定問題與修正
+
+初次測試時，兩個 Receiver 可以嘗試監聽相同的 `0.0.0.0:5004`，不符合 Port 被占用時應拒絕第二個監聽程序的預期。
+
+經檢查，`src/net.c` 原本使用 `SO_REUSEADDR`。考量 Windows Winsock 與 POSIX 系統的行為差異，修改為：
+
+- Windows：使用 `SO_EXCLUSIVEADDRUSE`。
+- Linux/macOS：保留 `SO_REUSEADDR`。
+- `setsockopt()` 設定失敗時輸出錯誤、關閉 Socket 並回傳失敗。
+
+修正後，第二個 Receiver 無法重複監聽 Port 5004，顯示 `WSA error 10048`，Exit Code 為 1，測試通過。
+
+### 連線逾時機制
+
+`include/textlink.h` 定義 `TL_CONNECT_TIMEOUT_MS` 為 `10000`，即 10 秒。
+
+`src/net.c` 的 `net_connect()` 使用非阻塞 `connect()` 搭配 `select()` 等待連線結果，並依設定的逾時值處理等待與失敗。
+
+本次實測確認：當目標 Port 沒有 Receiver 監聽時，Sender 能顯示錯誤並以非零狀態碼結束。
+
+**驗證範圍限制：** 已確認程式碼設定與連線拒絕處理，未另外在受控網路環境中實測完整等待 10 秒後逾時的情境。
+
+### 雙實體電腦回歸驗證
+
+測試環境：
+
+- 電腦 A：Ethernet，`192.168.0.140`。
+- 電腦 B：Wi-Fi，`192.168.0.188`。
+- 兩台電腦透過實際區域網路進行 TCP 連線。
+
+修正 Socket 後完成以下回歸驗證：
+
+| 測試項目 | 結果 |
+|---|---|
+| B → A RAW 檔案傳輸 | 成功，SHA-256 一致 |
+| B → A HUFF 檔案傳輸 | 成功，SHA-256 一致 |
+| `--bind 192.168.0.140` | 電腦 B 可正常連線 |
+| `--bind 127.0.0.1` | 電腦 A 可由 localhost 連線，電腦 B 遠端連線遭拒絕 |
+| 預設 HUFF 雙向聊天 | 成功 |
+| 中文、英文及 Emoji 聊天 | 成功 |
+| `/raw`、`/huff` 模式切換 | 成功 |
+| `/quit` 正常離開 | 成功 |
+
+額外使用跨實體電腦傳輸測試觀察斷線處理。Receiver 能辨識傳輸失敗，且未留下不完整的正式輸出檔案。32 MiB 測試使用強制中止 Sender 程序的方式進行；此結果應與既有 localhost 的 25% 傳輸中斷測試分開記錄。
+
+### 測試結論
+
+完成 Windows Socket 重複監聽問題修正後，TextLink 的主要雙機功能仍可正常執行。監聽端 Port 範圍已依課程規格限制為 `1024–65535`。
+
+重新執行 `mingw32-make test`，結果為 **PASS 114、FAIL 0、TODO 0**。先前完成的 80 次正式 Benchmark 為既有量測資料，本次功能回歸驗證沒有重新量測效能。
+
 ## 11. 提交前驗證清單
 
 - [x] 新增 V 邊界與異常輸入單元測試。
