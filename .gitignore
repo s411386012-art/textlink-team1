@@ -77,3 +77,7 @@ __pycache__/
 # Generated Huffman analysis files
 benchmarks/encoded/
 dump_huffman.exe
+
+/benchmarks/logs_two_pc_receiver_pretest/
+/received/
+/tests/edge_files/padding_5bits.huff
