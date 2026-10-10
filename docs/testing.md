@@ -336,6 +336,83 @@ cmd /c fc /b tests\edge_files\audio_header_only.wav out\audio_header_only.wav
 
 由於原始檔案極小，傳輸所需的固定開銷使上線比例達到 268.18%，但這不影響資料還原的正確性。
 
+### Huffman Padding 正常與異常測試（2026-10-10）
+
+**測試目的：** 驗證 Huffman Bitstream 最後不足 8 bits 時，編碼器能正確補零，解碼器能依照有效符號數停止解碼，並拒絕非零 Padding。
+
+**測試環境：** Windows PowerShell、TCP Loopback `127.0.0.1:5000`。
+
+#### 正常 Padding 測試
+
+測試資料為五個字元 `AAAAA`，使用 `SYM_BYTE` 編碼。由於只有一種符號，每個符號使用 1 bit，因此 Bitstream 共 5 個有效 bits，最後剩餘 3 bits 必須補零。
+
+| 驗證項目 | 實際結果 |
+|---|---|
+| 測試檔案 | `tests/edge_files/padding_5bits.bin` |
+| 原始資料大小 | 5 bytes |
+| Huffman 符號模式 | BYTE |
+| 有效 Bitstream 長度 | 5 bits |
+| 最後一個 byte | `00000000` |
+| Padding | `000` |
+| Huffman 編碼區塊 | 20 bytes |
+| 實際上線資料 | 69 bytes |
+| 接收端還原大小 | 5 bytes |
+| `fc /b` | 找不到相異處 |
+| **測試結果** | **PASS** |
+
+#### 異常 Padding 測試
+
+將 Huffman 區塊最後一個 byte 從 `00000000`（`0x00`）修改成 `00000001`（`0x01`），使最後三個 Padding bits 從 `000` 變成 `001`。
+
+使用 `tests/test_tcp_bad_padding.py` 將損壞的 Huffman 區塊直接放入 `FILE_DATA`，傳送至 TextLink 接收端。
+
+| 驗證項目 | 實際結果 |
+|---|---|
+| 損壞測試資料 | `padding_bad.huff` |
+| Huffman 區塊大小 | 20 bytes |
+| 最後一個 byte | `00000001` |
+| 非法 Padding | `001` |
+| 回覆 Frame Type | `0x12`（FILE_END） |
+| 回覆 Payload | `01`（失敗） |
+| 正式輸出檔案 | 未產生 |
+| 接收端結束碼 | 1 |
+| **測試結果** | **PASS** |
+
+#### 重現方式
+
+正常測試：
+
+```powershell
+.\textlink.exe recv 5000 out
+```
+
+另開終端機：
+
+```powershell
+.\textlink.exe send 127.0.0.1 5000 tests\edge_files\padding_5bits.bin --huff
+cmd /c fc /b tests\edge_files\padding_5bits.bin out\padding_5bits.bin
+```
+
+異常測試：
+
+接收端重新啟動：
+
+```powershell
+.\textlink.exe recv 5000 out
+```
+
+另開終端機執行：
+
+```powershell
+py .\tests\test_tcp_bad_padding.py
+```
+
+**測試結論：**
+
+本次測試證實 TextLink 能正確處理 Bitstream 最後不足 8 bits 的補零情況。合法 Padding 可成功解碼並逐 byte 還原；將 Padding 修改為非零後，接收端正確拒絕資料，回覆失敗 ACK，沒有產生正式輸出檔案，並以非零結束碼結束。
+
+上述結果為本次構造資料的本機整合測試，不代表已涵蓋所有可能的 Huffman 損壞情況。
+
 ### TCP-07：損壞 Huffman Codebook 整合測試（2026-10-09）
 
 **測試目的：** 驗證接收端遇到非法 Huffman Codebook 時，能拒絕解碼、不產生錯誤輸出檔案，並回傳失敗狀態與非零結束碼。
