@@ -25,14 +25,21 @@ Huffman 模式不保證所有資料都能壓縮變小。對於高熵資料或符
 |---|---|
 | C 單元測試 | **114 PASS、0 FAIL、0 TODO** |
 | Frame、UTF-8、Huffman | 已完成實作及單元測試 |
-| TCP 異常封包測試 | 已執行 TCP-01～TCP-04 |
-| RAW/HUFF 檔案傳輸 | 已進行功能測試 |
-| 檔案完整性 | 使用 `fc /b` 驗證傳輸後內容一致 |
-| 正式效能量測 | 4 種檔案 × 2 種模式 × 5 次，共 **40 筆** |
-| 正式量測環境 | `127.0.0.1`（localhost） |
-| 雙機 TCP 連線 | 團隊曾進行跨電腦連線測試，詳細環境與量測證據待補充 |
+| TCP 半包／黏包 | TCP-05、TCP-06 本機測試 PASS |
+| TCP 異常輸入 | TCP-01～04、TCP-07、非法 Padding 及中途斷線等已測案例 PASS |
+| RAW/HUFF 文字聊天 | 中文、英文及 Emoji 雙機測試 PASS |
+| TXT 檔案傳輸 | CLI 與聊天 `/send` 雙機測試 PASS |
+| WAV 檔案傳輸 | CLI 與聊天 `/send` 雙機測試 PASS；音樂可正常播放 |
+| 檔案完整性 | 雙機 TXT/WAV 使用 SHA-256 驗證內容一致 |
+| Localhost 正式量測 | 4 種檔案 × 2 種模式 × 5 次，共 **40 筆** |
+| 雙實體電腦正式量測 | 4 種檔案 × 2 種模式 × 5 次，共 **40 筆** |
+| **正式效能量測合計** | **80 筆** |
+| 雙機測試環境 | 電腦 A：Ethernet；電腦 B：Wi-Fi；TCP IPv4 |
+| 數據與分析 | 原始 CSV、中位數、Excel 圖表及 Huffman 壓縮分析報告已完成 |
 
-單元測試與 Benchmark 是不同的驗證工作。114 PASS 代表程式單元測試通過，40 筆 Benchmark 則用於分析傳輸效能。
+114 PASS 為 C 單元測試結果，80 筆 Benchmark 為兩種網路環境下的正式效能量測，兩者屬於不同驗證工作。
+
+TCP 異常輸入及 Huffman 邊界測試主要在 localhost 執行，不能直接視為所有情境都已完成雙機驗證。詳細測試證據參閱 `docs/testing.md`。
 
 ## 3. 編譯與測試
 
@@ -236,6 +243,17 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 - TCP-07：傳送包含異常 Huffman Codebook 的資料，確認接收端能拒絕錯誤編碼。
 
 上述測試均已完成本機驗證，詳細測試方式、接收端結果及檔案完整性檢查請參閱 [測試驗證報告](docs/testing.md)。
+
+此外，2026-10-10 新增 TCP 傳輸中途斷線測試，使用 `tests/test_tcp_disconnect.py` 模擬 RAW 檔案傳輸：
+
+- `FILE_BEGIN` 宣告 4096 bytes。
+- 實際僅傳送 1024 bytes，接收進度為 25%。
+- 不傳送 `FILE_END`，直接關閉 TCP 連線。
+- 接收端正確顯示「對方已關閉連線」。
+- 接收端 Exit Code 為 `1`。
+- 未產生不完整的正式輸出檔案，也未留下暫存檔。
+
+**測試結果：PASS（localhost）。**
 
 ## 8. 正式 Benchmark 效能量測
 
@@ -539,90 +557,121 @@ Localhost 傳送端有效傳輸速率：
 
 ## 10. 專案資料夾結構
 
+本專案採用模組化架構，將 C 程式實作、測試工具、正式量測資料、壓縮分析及專案文件分別存放，以利程式維護、測試重現與團隊協作。
+
 ```text
 textlink-team1/
 │
-├── src/                                  # C 程式主要實作
-│   ├── main.c                            # 主程式與命令列參數處理
-│   ├── net.c                             # TCP 網路連線
-│   ├── frame.c                           # Frame 封裝與解析
-│   ├── utf8.c                            # UTF-8 驗證
-│   ├── huffman.c                         # Huffman 編碼與解碼
-│   ├── chat.c                            # TCP 聊天功能
-│   └── transfer.c                        # RAW/HUFF 檔案傳輸
+├── src/                                   # C 程式主要實作
+│   ├── main.c                             # 主程式與命令列參數處理
+│   ├── net.c                              # TCP 網路連線
+│   ├── frame.c                            # Frame 封裝與解析
+│   ├── utf8.c                             # UTF-8 合法性驗證
+│   ├── huffman.c                          # Huffman 編碼與解碼
+│   ├── chat.c                             # TCP 聊天功能
+│   └── transfer.c                         # RAW/HUFF 檔案傳輸
 │
-├── include/                              # C Header 檔案
+├── include/                               # C Header 檔案
 │   ├── platform.h
 │   └── textlink.h
 │
-├── tests/                                # 單元測試與異常測試
-│   ├── test_codec.c                      # C 單元測試
-│   ├── test_tcp_malformed.ps1            # TCP 異常封包測試
-│   ├── test_tcp_stream.ps1               # TCP 拆包／黏包測試
-│   ├── test_tcp_bad_codebook.py          # Huffman 異常 Codebook 測試
-│   ├── dump_huffman.c                    # 匯出 C Huffman 實際編碼資料
-│   ├── make_samples.py                   # 測試檔案產生工具
-│   └── edge_files/                       # Huffman 邊界測試資料
+├── tests/                                 # 單元測試與異常測試
+│   ├── test_codec.c                       # C 單元測試（114 PASS）
+│   ├── test_tcp_malformed.ps1             # TCP 異常 Frame 測試
+│   ├── test_tcp_stream.ps1                # TCP 半包／黏包測試
+│   ├── test_tcp_bad_codebook.py           # 損壞 Huffman Codebook 測試
+│   ├── test_tcp_bad_padding.py            # 非法 Huffman Padding 測試
+│   ├── test_tcp_disconnect.py             # TCP 傳輸中途斷線測試
+│   ├── dump_huffman.c                     # 匯出 C Huffman 實際編碼結果
+│   ├── make_samples.py                    # 測試資料產生工具
+│   └── edge_files/                        # Huffman 邊界測試資料
 │
-├── benchmark_real/                       # 四份正式 Benchmark 資料
-│   ├── real_chinese.txt                  # 中文自然語言測試資料
-│   ├── real_english.txt                  # 英文自然語言測試資料
-│   ├── audio_music_20s.wav               # 20 秒 16-bit PCM 音樂
-│   └── audio_noise.wav                   # 16-bit PCM 雜訊
+├── benchmark_real/                        # 四份正式 Benchmark 測試檔案
+│   ├── real_chinese.txt                   # 中文自然語言測試資料
+│   ├── real_english.txt                   # 英文自然語言測試資料
+│   ├── audio_music_20s.wav                # 20 秒 16-bit PCM 音樂
+│   └── audio_noise.wav                    # 16-bit PCM 雜訊
 │
-├── benchmarks/                           # 效能量測與壓縮分析
-│   ├── README.md                         # Benchmark 執行說明
-│   ├── run_benchmark.ps1                 # 正式傳輸效能量測腳本
-│   ├── formal_raw_40.csv                 # 40 次正式量測原始資料
-│   ├── formal_medians.csv                # 正式量測中位數
-│   ├── formal_benchmark_40.xlsx          # 正式 Benchmark Excel
+├── benchmarks/                            # 正式效能量測與統計分析
+│   ├── README.md                          # Benchmark 執行說明
 │   │
-│   ├── char_frequency.py                 # 文字字元頻率分析
-│   ├── wav_histogram.py                  # WAV Sample Histogram
+│   ├── run_benchmark.ps1                  # Localhost 單次量測輔助腳本
+│   ├── formal_raw_40.csv                  # Localhost 40 筆原始數據
+│   ├── formal_medians.csv                 # Localhost 五次中位數
+│   ├── formal_benchmark_40.xlsx           # Localhost Benchmark Excel
 │   │
-│   ├── compression_analysis.py           # 符號 N、K、Shannon Entropy H
-│   ├── compression_codebook.py           # 平均碼長 L 與 Codebook 分析
-│   ├── analyze_encoded.py                # 解析 C Huffman 實際編碼結果
-│   ├── chat_compression_analysis.py      # 聊天短訊息壓縮率分析
-│   ├── break_even_analysis.py            # 理論損益平衡頻寬計算
+│   ├── two_pc_receiver.ps1                # 雙機自動接收腳本
+│   ├── two_pc_sender.ps1                  # 雙機自動傳送腳本
+│   ├── merge_two_pc.py                    # 配對與合併 40 對 STATS
+│   ├── two_pc_raw_40.csv                  # 雙機 40 筆原始量測
+│   ├── two_pc_medians.csv                 # 雙機五次中位數
+│   ├── TextLink_Benchmark_80.xlsx         # 兩種環境共 80 次比較
 │   │
+│   ├── logs_two_pc_sender/                # 雙機 Sender 原始 Log
+│   ├── logs_two_pc_receiver/              # 雙機 Receiver 原始 Log
+│   │
+│   ├── char_frequency.py                  # 中文／英文字符頻率分析
+│   ├── wav_histogram.py                   # WAV Sample Histogram
+│   ├── compression_analysis.py            # N、K、Shannon Entropy H
+│   ├── compression_codebook.py            # 平均碼長 L 與 Codebook 分析
+│   ├── analyze_encoded.py                 # C Huffman 實際壓縮結果解析
+│   ├── chat_compression_analysis.py       # 短聊天訊息壓縮率分析
+│   ├── break_even_analysis.py             # 理論損益平衡頻寬計算
 │   ├── TextLink_Huffman_Compression_Analysis.xlsx
-│   │                                       # Huffman 壓縮分析 Excel
+│   │                                       # Huffman 壓縮分析工作簿
 │   │
-│   └── figures/                          # 分析數據與圖表
-│       ├── real_chinese_top30.csv        # 中文前 30 常見字元
-│       ├── real_english_top30.csv        # 英文前 30 常見字元
-│       ├── audio_music_histogram.csv     # 音樂 WAV Sample 分布
-│       ├── compression_entropy.csv       # 八組符號的 H 與統計資料
-│       ├── compression_codebook.csv      # L 與 Codebook 計算
-│       ├── compression_actual.csv        # C 編碼器實際壓縮結果
-│       ├── chat_compression.csv          # 不同聊天長度的壓縮比例
-│       └── break_even.csv                # 理論損益平衡頻寬
+│   └── figures/                           # 頻率分布及壓縮分析資料
+│       ├── real_chinese_top30.csv         # 中文前 30 常見字元
+│       ├── real_english_top30.csv         # 英文前 30 常見字元
+│       ├── audio_music_histogram.csv      # WAV Sample 分布
+│       ├── compression_entropy.csv        # Shannon Entropy 分析
+│       ├── compression_codebook.csv       # 平均碼長與 Codebook
+│       ├── compression_actual.csv         # 實際編碼及封包開銷
+│       ├── chat_compression.csv           # 聊天壓縮比例
+│       └── break_even.csv                 # 損益平衡頻寬
 │
-├── docs/                                 # 專案技術與驗證文件
-│   ├── interface.md                      # 通訊協定與介面規格
-│   ├── testing.md                        # 測試與驗收結果
-│   ├── compression_report.md             # Huffman 壓縮率完整分析
-│   ├── verification_checklist.md         # 驗收項目清單
-│   └── report_data_requirements.md       # 報告資料需求
+├── docs/                                  # 技術與驗收文件
+│   ├── interface.md                       # TCP Frame 與 Huffman 介面規格
+│   ├── testing.md                         # 單元、異常及雙機測試報告
+│   ├── verification_checklist.md          # 教授 0～8 驗收檢查表
+│   ├── compression_report.md              # Huffman 壓縮率完整分析
+│   └── report_data_requirements.md        # 實驗報告資料需求
 │
-├── Makefile                              # 專案編譯與測試
-├── README.md                             # 專案說明與操作指南
-├── TEAM_LOG.md                           # 團隊開發紀錄
-├── CONTRIBUTIONS.md                      # 成員貢獻紀錄
-├── AI_USAGE.md                           # AI 使用紀錄
-└── slides.pdf                            # 最終口頭報告簡報（待完成）
+├── Makefile                               # C 程式編譯與測試規則
+├── README.md                              # 專案說明與操作指南
+├── README_V_SUBMISSION.md                 # V 角色資料說明
+├── TEAM_LOG.md                            # 團隊開發與測試紀錄
+├── CONTRIBUTIONS.md                       # 組員工作與程式貢獻
+├── AI_USAGE.md                            # AI 工具使用紀錄
+└── slides.pdf                             # 最終口頭報告簡報（待確認）
 ```
 
-**補充說明**
+### 資料夾說明
 
-- `src/` 與 `include/` 存放 TextLink 的主要 C 程式與介面定義。
-- `tests/` 包含單元測試、TCP 異常封包測試、拆包／黏包驗證及 Huffman 邊界測試。
-- `benchmark_real/` 存放四份正式測試資料。
-- `benchmarks/` 存放 RAW/HUFF 效能量測結果，以及 Huffman 熵、平均碼長、Codebook 和損益平衡頻寬分析程式。
-- `benchmarks/figures/` 保存分析產生的 CSV 資料及相關統計結果。
-- `docs/compression_report.md` 為 Huffman 壓縮率完整報告，詳細說明計算公式、實驗結果與分析結論。
-- `slides.pdf` 為最終口頭報告繳交檔案，完成後放置於 Repository 根目錄。
+- **`src/` 與 `include/`**：存放 TextLink 的 C99 核心程式，包括 TCP、Frame、UTF-8、Huffman、聊天及檔案傳輸。
+- **`tests/`**：存放 114 項單元測試、TCP 半包／黏包、異常封包、損壞 Codebook、非法 Padding、中途斷線及 Huffman 邊界測試。
+- **`benchmark_real/`**：存放四種正式測試檔案，涵蓋中文、英文、音樂 WAV 與雜訊 WAV。
+- **`benchmarks/`**：存放 localhost 40 次及雙機 40 次正式效能量測的 CSV、Excel、執行腳本與統計分析。
+- **`benchmarks/logs_two_pc_sender/` 與 `logs_two_pc_receiver/`**：保存正式雙機量測的 Sender／Receiver 原始 STATS 紀錄。
+- **`benchmarks/figures/`**：保存字符機率分布、WAV Sample Histogram、Entropy、Codebook 及壓縮分析結果。
+- **`docs/`**：存放通訊協定、驗收檢查表、完整測試報告與 Huffman 壓縮率分析。
+- **`TEAM_LOG.md`、`CONTRIBUTIONS.md`、`AI_USAGE.md`**：記錄團隊協作、成員實際貢獻及 AI 工具使用情況。
+
+### 正式 Benchmark 資料說明
+
+本專案已完成以下量測：
+
+| 測試環境 | 網路條件 | 正式量測 |
+|---|---|---:|
+| Localhost | 電腦 A，`127.0.0.1` | 40 次 |
+| 雙實體電腦 | 電腦 B（Wi-Fi）→ 電腦 A（Ethernet） | 40 次 |
+| **合計** | | **80 次** |
+
+每個環境皆使用四種測試檔案、RAW/HUFF 各五次，並分別保存傳送端與接收端 STATS。
+
+兩種環境的比較結果可參閱 `benchmarks/TextLink_Benchmark_80.xlsx`，完整實驗分析則記錄於 `README.md` 第 8 節與 `docs/testing.md`。
+
+**注意：** 本節列示主要專案檔案與正式成果，未包含編譯產生的 `.exe`、本機接收資料夾、暫存檔案及其他不需提交的測試產物。
 
 ## 11. 團隊分工
 
@@ -653,6 +702,13 @@ textlink-team1/
 - [正式四種測試資料](benchmark_real/)
 - [Huffman 壓縮率分析報告](docs/compression_report.md)
 - [Huffman 壓縮分析 Excel](benchmarks/TextLink_Huffman_Compression_Analysis.xlsx)
+- [雙機 40 筆原始量測](benchmarks/two_pc_raw_40.csv)
+- [雙機 Benchmark 中位數](benchmarks/two_pc_medians.csv)
+- [80 次 Benchmark 比較 Excel](benchmarks/TextLink_Benchmark_80.xlsx)
+- [雙機自動傳送腳本](benchmarks/two_pc_sender.ps1)
+- [雙機自動接收腳本](benchmarks/two_pc_receiver.ps1)
+- [雙機數據合併程式](benchmarks/merge_two_pc.py)
+- [TCP 中途斷線測試](tests/test_tcp_disconnect.py)
 
 ### 團隊與繳交文件
 
@@ -666,7 +722,11 @@ textlink-team1/
 - Huffman 壓縮不保證輸出一定小於原始資料。
 - 部分音訊檔因符號種類與 Codebook 開銷，可能出現壓縮後膨脹。
 - 效能數據受到 CPU、記憶體、系統負載與網路環境影響。
-- 本次正式 Benchmark 使用 localhost，不能直接推論實際區域網路傳輸表現。
+- 正式 Benchmark 已涵蓋 localhost 與雙實體電腦區域網路兩種環境，各執行 40 次。
+- 雙機採混合網路連線，電腦 A 使用 Ethernet，電腦 B 使用 Wi-Fi。
+- 兩台電腦的 CPU 硬體與 GCC 版本不同，無法直接將兩種環境的耗時差異完全歸因於網路。
+- Localhost 與雙機測試的中文、英文 TXT 檔案大小不同，跨環境比較須註明測試資料版本差異。
+- 電腦 B 的額外 WAV Huffman 控制實驗曾出現顯著偏高的編解碼時間，目前尚未確認直接原因。
 - 傳送端與接收端的 `total_ms` 為個別量測值，不能直接相加視為端對端時間。
 - 中文檔名及部分終端機字元顯示可能受到作業系統與編碼環境限制。
 

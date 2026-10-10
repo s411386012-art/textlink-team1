@@ -38,19 +38,31 @@ AI 協助規劃不完整封包、超出長度限制、未知 Frame Type 等測�
 
 ### 2.3 Benchmark 效能量測
 
-AI 協助規劃測試流程、整理統計資料及分析 RAW 與 Huffman 的效能差異。
+AI 協助規劃 RAW/HUFF 效能測試流程、測試資料安排、STATS 數據解析、中位數計算，以及不同環境的效能比較。
 
-正式測試使用四種檔案、兩種模式、每種五次，共 40 次量測。
+正式量測涵蓋兩種環境：
 
-組員實際執行測試、收集 `STATS`、整理 CSV，並使用 Excel 製作比較圖表。
+- Localhost：四種檔案 × RAW/HUFF × 各五次，共 40 次。
+- 雙實體電腦：四種檔案 × RAW/HUFF × 各五次，共 40 次。
+- 正式量測合計：**80 次**。
+
+雙機測試使用電腦 A（Ethernet，Receiver）與電腦 B（Wi-Fi，Sender）。
+
+AI 協助提供 PowerShell 自動化腳本及 Python 數據合併程式，組員實際執行測試、收集兩端 STATS、檢查 40 對紀錄的一致性，再整理原始 CSV、中位數與 Excel 圖表。
 
 相關檔案：
 
 - `benchmarks/run_benchmark.ps1`
+- `benchmarks/two_pc_receiver.ps1`
+- `benchmarks/two_pc_sender.ps1`
+- `benchmarks/merge_two_pc.py`
 - `benchmarks/formal_raw_40.csv`
 - `benchmarks/formal_medians.csv`
-- `benchmarks/formal_benchmark_40.xlsx`
-- 初期探索性量測使用 `benchmark_files/`（舊資料集，現已從 Repository 最新版本移除）；正式驗收改用 `benchmark_real/`。
+- `benchmarks/two_pc_raw_40.csv`
+- `benchmarks/two_pc_medians.csv`
+- `benchmarks/TextLink_Benchmark_80.xlsx`
+
+所有量測數據均以實際程式輸出為準，AI 提出的效能原因分析屬於推論，不直接視為已證實的事實。
 
 ### 2.4 程式除錯與相容性修正
 
@@ -68,6 +80,40 @@ AI 協助分析及提出修正建議，包括：
 AI 協助整理測試方法、結果分析、Benchmark 重現流程及專案文件初稿。
 
 文件內容由組員依實際執行結果、終端機輸出與 Git commit 紀錄檢查後再提交。
+
+### 2.6 Huffman 壓縮率與理論分析
+
+AI 協助規劃及撰寫 Huffman 壓縮分析程式，包含：
+
+- 計算符號數 N、不同符號數 K 與 Shannon Entropy H。
+- 計算 Huffman 平均碼長 L，檢查理論不等式。
+- 解析 C Huffman 編碼器輸出的資料，區分 Header、Codebook 與 Bitstream。
+- 比較中文、英文的 CHAR/BYTE 符號模式。
+- 比較 WAV 的 S16/BYTE 符號模式。
+- 分析不同長度聊天訊息的壓縮比例。
+- 根據量測資料建立簡化的 RAW/HUFF 損益平衡頻寬模型。
+
+組員實際執行 C 與 Python 程式，檢查輸出數據，並整理分析報告與 Excel。
+
+相關檔案包括：
+
+- `benchmarks/compression_analysis.py`
+- `benchmarks/compression_codebook.py`
+- `benchmarks/analyze_encoded.py`
+- `benchmarks/chat_compression_analysis.py`
+- `benchmarks/break_even_analysis.py`
+- `docs/compression_report.md`
+- `benchmarks/TextLink_Huffman_Compression_Analysis.xlsx`
+
+分析結果及理論估計均需依據實際資料與公式驗證，不將 AI 建議直接視為實驗結論。
+
+### 2.7 TCP 傳輸中途斷線測試
+
+AI 協助設計 `tests/test_tcp_disconnect.py`，模擬傳送端宣告 4096 bytes、僅傳送 1024 bytes 後提前關閉 TCP 連線的情境。
+
+組員實際執行測試，確認接收端偵測斷線、以 Exit Code `1` 結束，且沒有產生不完整的正式輸出檔案。
+
+測試結果已記錄於 `docs/testing.md`，並作為驗收第 6 項的補充證據。
 
 ## 3. 人工驗證方式
 
