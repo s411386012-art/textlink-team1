@@ -56,12 +56,24 @@
 
 ### Git 作者：陳皓祥
 
-- 實作 Frame 標頭封裝與解析。
-- 實作 UTF-8 合法性驗證。
-- 實作 Huffman `SYM_BYTE`、`SYM_CHAR` 編碼與解碼。
-- 修正 WAV data chunk 奇數長度截斷的邊界問題。
-- 完成相關單元測試。
-- 補充 Huffman 封包及 WAV 邊界處理規格。
+**【通訊協定與封包層】**
+- **制定通訊協定**：撰寫 `docs/interface.md`，定義 Big-endian 傳輸規範與 5 種 TL-Frame 狀態機。
+- **實作封包層 (Frame)**：完成 TL-Frame (`length`+`type`) 封裝與解析，解決 TCP 黏包/半包問題，實現網路與應用層解耦。
+
+**【Huffman 核心壓縮演算法】**
+- **三模式編解碼器**：實作 `SYM_BYTE`、`SYM_CHAR` (UTF-8) 與 `SYM_S16` (16-bit WAV PCM) 三種 Huffman 模式，最佳化不同資料型態的壓縮率。
+- **自帶 Codebook 設計**：設計 13-bytes 共通標頭與動態 Codebook (4/8 bytes)，實現接收端 100% 獨立解碼。
+- **WAV 邊界處理**：解決 data chunk 奇數長度截斷問題，並透過 `parse_wav` 雙重校驗，精確保留非樣本資料。
+- **解碼端安全防護**：重建解碼前綴樹 (Prefix Tree) 時加入惡意封包防護，攔截「重複編碼」與「前綴衝突」以防止系統崩潰。
+
+**【字元驗證與系統測試】**
+- **UTF-8 合法性驗證**：實作 `utf8.c` (RFC 3629)，嚴格攔截 Overlong Encoding、UTF-16 代理區段等非法輸入。
+- **單元測試 (Unit Tests)**：完成並通過專案全部 82 項單元測試，達成 0 failures 綠燈標準。
+- **跨裝置實機測試**：編譯 `textlink.exe`，並完成 Server/Client 跨電腦 TCP Socket 通訊、文字聊天與大檔傳輸驗證。
+
+**【專案管理與報告】**
+- **版控管理**：負責 GitHub Repository 權限與可見度設定，確保團隊協作同步。
+- **口頭報告 (P1)**：主講「架構設計與通訊協定」環節，涵蓋模組化資料流、封包規格及 Huffman 演算法決策。
 
 ### Git 作者：LiJheChen
 
