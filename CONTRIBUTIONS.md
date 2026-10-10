@@ -29,6 +29,14 @@
 - 使用 `fc /b` 驗證接收檔案與原始檔案逐 byte 相同。
 - 修正 Windows MinGW 環境下的 IPv4 轉換及終端機旗標相容性問題。
 - 更新 `docs/testing.md`、README 測試結果與相關說明。
+- 新增 TCP-05、TCP-06 拆包與黏包整合測試，以及 TCP-07 損壞 Huffman Codebook 測試。
+- 完成七組 Huffman 特殊檔案及 BYTE fallback 測試。
+- 補充 WAV 奇數 `data` 長度、零 Sample WAV，以及正常與異常 Huffman Padding 測試。
+- 使用 C Huffman 編碼結果分析 Shannon Entropy（H）、平均碼長（L）、Codebook 大小及實際壓縮比例。
+- 比較中文 CHAR/BYTE、英文 CHAR/BYTE 及 WAV S16/BYTE 的編碼效能。
+- 分析聊天短訊息的 Huffman 壓縮效果，並估計 RAW/HUFF 的理論損益平衡頻寬。
+- 整理 `docs/compression_report.md`、分析程式、CSV 及 Excel 工作簿。
+- 更新 `docs/verification_checklist.md`，依照實際測試證據記錄各項驗收狀態。
 
 代表性 Git commits：
 
@@ -66,6 +74,23 @@
 
 - `s411386012-art`：建立初始 Repository。
 - `s411386011-create`：透過 GitHub 上傳檔案，詳細內容需依提交內容確認。
+
+### 3.1 MP4 程式來源與 Huffman 實作說明
+
+本專案的 Huffman 編解碼功能由團隊成員於 TextLink Repository 中自行實作與整合，**未直接沿用或複製任何組員個人 MP4 作業的原始程式碼**。
+
+Huffman 演算法概念與課程 MP4 作業相關，但本專案依照 Team 1 的需求，完成 BYTE、CHAR、S16 符號處理、Codebook 建立與傳輸、Bitstream 打包及解碼等功能。
+
+相關 C 程式實作與修改可透過以下 Git Commit 追溯：
+
+| Commit | 實作內容 |
+|---|---|
+| `3278144` | Huffman SYM_BYTE 編解碼 |
+| `f600929` | Huffman SYM_CHAR 編解碼 |
+| `2232c74` | WAV data chunk 奇數長度處理 |
+| `edfed16` | Huffman 建樹及解碼安全性改善 |
+
+**程式來源結論：** 本專案未直接沿用個人 MP4 原始碼，Huffman 功能由團隊於 TextLink 專案中完成實作與整合。
 
 ## 4. 成果與驗證
 
