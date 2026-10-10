@@ -478,7 +478,11 @@ int transfer_recv(const char *bind_ip, int port, const char *outdir) {
             rc = file_rx_data(&rx, p, len);
             if (rc == TL_OK) draw_progress("接收", rx.got, rx.data_size);
         } else if (type == T_FILE_END && rx.begun) {
-            ended = 1;
+            if (len != 0) {
+                rc = TL_ERR_PROTO;
+            } else {
+                ended = 1;
+            }
         } else {
             rc = TL_ERR_PROTO;                      /* 順序不對或不認得的 type */
         }

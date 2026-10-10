@@ -1149,6 +1149,59 @@ TextLink 在 RAW 檔案傳輸尚未完成時，若傳送端提前關閉 TCP 連�
 
 重新執行 `mingw32-make test`，結果為 **PASS 114、FAIL 0、TODO 0**。先前完成的 80 次正式 Benchmark 為既有量測資料，本次功能回歸驗證沒有重新量測效能。
 
+### 非法 FILE_END Payload 驗證（2026-10-10）
+
+依據 `docs/interface.md`，Sender 傳送的 `FILE_END` 必須使用空 Payload。
+
+本次利用 Python Socket 建立 TCP 連線，依序傳送合法 `FILE_BEGIN`、4 bytes `FILE_DATA`，最後刻意傳送帶有 1 byte Payload（`0x99`）的非法 `FILE_END`。
+
+| 測試項目 | 實際結果 | 判定 |
+|---|---|---|
+| CLI Receiver（Port 5012） | 拒絕非法封包，Exit Code 1，沒有輸出檔案 | PASS |
+| Chat Server（Port 5013） | 顯示拒絕非法 `FILE_END`，沒有產生對應輸出檔案 | PASS |
+
+兩次測試均已收到完整的 4 bytes 檔案資料，但因結束封包不符合協定，接收端沒有將其視為成功存檔。
+
+本測試確認非法 `FILE_END` Payload 的拒收行為；不代表已涵蓋所有異常封包組合。
+
+**測試重現方式**
+
+測試腳本：`tests/test_invalid_file_end.py`
+
+此腳本會透過 TCP 依序傳送 `FILE_BEGIN`、`FILE_DATA`，以及帶有非法 1-byte Payload 的 `FILE_END`。
+
+CLI Receiver 測試：
+
+接收端：
+
+```powershell
+.\textlink.exe recv 5012 out
+```
+
+另一個 PowerShell：
+
+```powershell
+py -3 .\tests\test_invalid_file_end.py 5012
+```
+
+Chat Server 測試：
+
+接收端：
+
+```powershell
+.\textlink.exe chat server 5013 --raw
+```
+
+另一個 PowerShell：
+
+```powershell
+py -3 .\tests\test_invalid_file_end.py 5013
+```
+
+預期 CLI Receiver 回傳非零 Exit Code，且不產生 `out/invalid_end_test.bin`。Chat Server 應拒絕非法 `FILE_END`，且不產生對應的正式輸出檔案。
+
+此腳本僅負責產生異常封包；PASS/FAIL 仍須透過接收端輸出及檔案存在狀態確認。
+
 ## 11. 提交前驗證清單
 
 - [x] 新增 V 邊界與異常輸入單元測試。

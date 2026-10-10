@@ -77,7 +77,9 @@ BYTE fallback 主要適用於檔案編碼：當文字資料不符合 UTF-8 要�
 
 依通訊協定設計，傳送端送出的 `FILE_END` Payload 應為空；接收端回覆的 `FILE_END` Payload 則固定為 1 byte，其中 `0x00` 表示成功，`0x01` 表示失敗。
 
-目前命令列接收端會檢查檔案傳輸是否已開始，但尚未強制拒絕帶有非空 Payload 的傳送端 `FILE_END`。因此，非空 `FILE_END` 的拒收行為屬於尚待加強的協定驗證項目，不應列為已通過測試。
+目前命令列接收端已檢查傳送端 `FILE_END` 的 Payload 長度，僅接受空 Payload（0 byte）；若收到非空 Payload，則回報協定錯誤並拒絕存檔。聊天模式也已加入相應檢查，遇到非法 `FILE_END` 時回報失敗，不將該次傳輸視為成功。
+
+2026-10-10 已使用 Python TCP 測試程式分別對 CLI Receiver 與 Chat Server 傳送非法 `FILE_END`（1-byte Payload）。兩者均正確拒絕，且未產生對應的正式輸出檔案。
 
 ## 4. Huffman 區塊格式（`huff_encode` 的輸出）
 

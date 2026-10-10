@@ -369,6 +369,14 @@ static void handle_file_frame(uint8_t type, const uint8_t *p, size_t len) {
         if (p[0] == 0) add_sysf("[檔案] 對方已成功還原並存檔 %s（從開始傳到收到回覆 %.1f ms）", g_tx_name, ms);
         else           add_sysf("[檔案] 對方回報 %s 還原失敗（解碼或寫檔沒成功）", g_tx_name);
     } else {
+            if (len != 0) {
+            add_sysf("[檔案] 拒絕非法 FILE_END：payload 長度必須為 0");
+            uint8_t status = 1;
+            frame_send(g_sock, T_FILE_END, &status, 1);
+            file_rx_reset(&g_rx);
+            g_rx_discard = 0;
+            return;
+        }
         /* FILE_END（空）：對方送完了 → 檢查、解碼、存檔、回覆結果 */
         /* 前面已經出錯（g_rx_discard）就不必 finish，直接當成失敗。不論成敗都要回覆：對方正在等這 1 byte。
          * 這個 frame_send 是從「接收執行緒」送出的，主執行緒同一時間可能也在送訊息或檔案；
