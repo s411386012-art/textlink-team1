@@ -11,7 +11,7 @@
 | 4 | WAV：CLI `send/recv` 與聊天 `/send`；RAW/HUFF 無損傳輸及播放 | PASS（雙機） | 音樂 WAV CLI 與聊天 `/send` RAW/HUFF 成功，SHA-256 一致且可播放；雜訊 WAV CLI RAW/HUFF SHA-256 一致 |
 | 5 | 空檔、單符號、256 bytes、BOM/CRLF、特殊 WAV、BYTE fallback | PASS（已測案例） | `tests/edge_files/` 邊界資料及本機測試；奇數 WAV、零 Sample WAV 等補充案例 |
 | 5a | `sym=char` / `sym=s16`；中文 Ratio 門檻 | PASS（本機＋雙機） | 中文 HUFF `sym=char`；16-bit WAV HUFF `sym=s16`；雙機中文 HUFF ratio=0.3254 |
-| 6 | 長度 0／超限、未知 Type、斷線、損壞 Codebook、非法 UTF-8、Padding | PASS（已測案例） | TCP-01～04、TCP-07、損壞 Padding 拒絕測試、UTF-8 與 Huffman 邊界測試；詳細案例參閱 `docs/testing.md` |
+| 6 | 長度 0／超限、未知 Type、斷線、損壞 Codebook、非法 UTF-8、Padding | PASS（已測案例） | TCP-01～04、TCP-07、損壞 Padding 拒絕測試、UTF-8 與 Huffman 邊界測試；詳細案例參閱 `docs/testing.md` TCP-01～04、TCP-07、損壞 Padding、非法 UTF-8、Huffman 邊界測試；另以 `tests/test_tcp_disconnect.py` 驗證 RAW 傳輸至 25% 時斷線，Receiver Exit Code 為 1，沒有留下不完整檔案。詳細紀錄參閱 `docs/testing.md`。|
 | 7 | STATS 欄位、Ratio 驗算、成功／失敗 Exit Code | PASS（本機＋雙機已測案例） | 114 項單元測試及相關 TCP 驗證；雙機 40 對 Sender/Receiver STATS 配對成功 |
 | 7a | RAW ratio 1.0000～1.0100；中文 HUFF ratio 小於 1 | PASS（本機＋雙機） | 雙機 RAW ratio≈1.0001、中文 HUFF ratio≈0.3254 |
 | 8 | 乾淨 Clone：Make、Make Test、無警告 | PASS（已驗證環境） | 乾淨 Clone 編譯及測試成功，114 PASS、0 FAIL、0 TODO |

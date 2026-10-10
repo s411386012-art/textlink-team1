@@ -1017,6 +1017,46 @@ py .\benchmarks\merge_two_pc.py
 
 正式雙機 Sender 與 Receiver Log 分別保存於 `benchmarks/logs_two_pc_sender/`、`benchmarks/logs_two_pc_receiver/`。
 
+### TCP 傳輸中途斷線測試（2026-10-10）
+
+**測試目的：** 驗證接收端在檔案尚未完整傳輸時，能偵測 TCP 連線中斷，回報錯誤並避免產生不完整的正式輸出檔案。
+
+**測試環境：**
+
+- 作業系統：Windows
+- 網路：localhost（`127.0.0.1:5002`）
+- 接收程式：`textlink.exe recv`
+- 測試腳本：`tests/test_tcp_disconnect.py`
+- 傳輸模式：RAW
+
+**測試方法：**
+
+1. 傳送合法 `FILE_BEGIN`，宣告檔案長度為 4,096 bytes。
+2. 傳送 `FILE_DATA`，但只包含 1,024 bytes。
+3. 不傳送 `FILE_END`，直接關閉 TCP 連線。
+4. 觀察接收端是否正確辨識中途斷線。
+5. 檢查 Receiver Exit Code 及輸出檔案狀態。
+
+**實際測試結果：**
+
+| 驗證項目 | 實際結果 |
+|---|---|
+| FILE_BEGIN 宣告大小 | 4,096 bytes |
+| FILE_DATA 已傳送大小 | 1,024 bytes |
+| 接收進度 | 25% |
+| FILE_END | 未傳送 |
+| 接收端錯誤訊息 | 接收失敗，對方已關閉連線 |
+| Receiver Exit Code | `1` |
+| 正式輸出檔案 | 未產生 |
+| 不完整暫存檔 | 未殘留 |
+| 測試結果 | **PASS** |
+
+**結論：**
+
+TextLink 在 RAW 檔案傳輸尚未完成時，若傳送端提前關閉 TCP 連線，接收端能偵測異常並以非零結束碼離開，不會留下不完整的正式輸出檔案。本次驗證結果為 PASS（localhost）。
+
+本測試為中途斷線的本機整合測試，不代表已涵蓋所有斷線時機或網路故障型態。
+
 ## 11. 提交前驗證清單
 
 - [x] 新增十項 V 邊界與異常輸入測試。
