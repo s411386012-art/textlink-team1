@@ -10,13 +10,21 @@
 - 建置工具：GCC / MinGW、`mingw32-make`
 - 作業系統：Windows
 - 操作介面：Windows PowerShell
-- 正式效能量測網路：TCP Loopback，`127.0.0.1:5000`
-- 正式量測次數：四種檔案 × RAW/HUFF 兩種模式 × 各五次，共 40 次
 - 統計方法：每組五次量測取中位數（Median）
 
-本次正式效能量測使用同一台 Windows 電腦進行，所得結果不代表兩台實體電腦之間的網路效能。
+本次正式效能量測分為兩種環境：
 
-團隊曾進行雙機 TCP 連線測試，但完整的雙機測試環境、IP、操作紀錄與效能數據仍需由相關組員補充。雙機功能測試與本文件的 40 次 localhost 效能量測應分開看待。
+| 環境 | 網路條件 | 量測次數 |
+|---|---|---:|
+| Localhost | 電腦 A，TCP Loopback `127.0.0.1:5000` | 40 次 |
+| 雙實體電腦 | 電腦 B（Wi-Fi）→ 電腦 A（Ethernet），TCP Port 5000 | 40 次 |
+| **合計** | | **80 次** |
+
+每種環境皆使用四份大於 1 MB 的測試檔案，分別執行 RAW/HUFF 各五次。
+
+雙機測試使用相同的 Git Commit，但兩台電腦的 GCC 版本與硬體環境不同。中文與英文 TXT 在兩種環境中的檔案大小亦不同，因此跨環境效能比較須考慮上述差異。
+
+完整雙機測試環境、功能驗收、原始數據及量測結果記錄於本文件後方「雙實體電腦功能驗收與正式 Benchmark」章節。
 
 ### 1.2 單元測試結果
 
@@ -44,13 +52,16 @@
 | 測試類別 | 驗證方式 | 結果 |
 |---|---|---|
 | Frame、UTF-8、Huffman | `mingw32-make test` | 114 PASS、0 FAIL、0 TODO |
-| RAW/HUFF 聊天 | 本機 TCP server/client 互傳文字 | 已完成本機功能測試 |
-| TXT/WAV 檔案傳輸 | `send` / `recv`，RAW/HUFF | 已進行功能及正式效能量測 |
-| 檔案完整性 | Windows `fc /b` 逐 byte 比對 | 已驗證測試檔案可正確還原 |
-| 邊界與壞輸入 | `tests/test_codec.c` | 新增十項測試並通過 |
-| TCP 異常輸入 | `tests/test_tcp_malformed.ps1` | TCP-01～TCP-04 已執行 |
-| Benchmark | 四檔案 × 兩模式 × 五次 | 40 筆 localhost 量測完成 |
-| 雙機 TCP 連線 | 團隊跨電腦實際操作 | 曾執行，詳細證據待補 |
+| RAW/HUFF 聊天 | 雙機中文、英文、4-byte Emoji 訊息互傳 | PASS（雙機） |
+| TXT/WAV 檔案傳輸 | CLI `send/recv` 及聊天 `/send` | PASS（雙機已測案例） |
+| 檔案完整性 | `fc /b`、雙機 SHA-256 | PASS |
+| Huffman 邊界 | 空檔、單符號、特殊 WAV、BYTE fallback | PASS（本機已測案例） |
+| TCP 異常輸入 | TCP-01～04、TCP-07、非法 Padding | PASS（本機已測案例） |
+| TCP 半包／黏包 | TCP-05、TCP-06 | PASS（本機） |
+| TCP 中途斷線 | `tests/test_tcp_disconnect.py` | PASS（本機；Exit Code 1，未留下不完整檔案） |
+| Localhost Benchmark | 四檔案 × RAW/HUFF × 各五次 | 40 筆完成 |
+| 雙實體電腦 Benchmark | 四檔案 × RAW/HUFF × 各五次 | 40 筆完成，兩端 STATS 配對成功 |
+| **正式 Benchmark 合計** | **兩種環境** | **80 筆完成** |
 
 單元測試通過不代表已完成所有整合測試、記憶體安全檢查或網路壓力測試。
 
@@ -286,8 +297,6 @@ cmd /c fc /b tests\edge_files\audio_odd.wav out\audio_odd.wav
 ```
 
 **通過條件：** 傳送端顯示 `mode=huff sym=s16`，接收端成功解碼及存檔，且 `fc /b` 顯示找不到相異處。
-
-**測試備註：** 目前已確認 C 編碼器可以對此測試檔案產生 86 bytes 的 Huffman 區塊，但尚未取得接收端還原及檔案比對成功的結果，因此不將整體測試標記為 PASS。
 
 ### WAV 只有檔頭、零 Sample 測試（2026-10-10）
 
@@ -1059,21 +1068,36 @@ TextLink 在 RAW 檔案傳輸尚未完成時，若傳送端提前關閉 TCP 連�
 
 ## 11. 提交前驗證清單
 
-- [x] 新增十項 V 邊界與異常輸入測試。
+- [x] 新增 V 邊界與異常輸入單元測試。
 - [x] 取得 114 PASS、0 FAIL、0 TODO。
-- [x] 提交相關程式與相容性修正至 Git。
-- [x] 執行 TCP-01～TCP-04 異常封包測試。
-- [x] 完成正式四種檔案的 RAW/HUFF 各五次量測。
-- [x] 整理 40 筆原始數據及八組中位數。
-- [x] 完成中文字元、英文字元頻率及 WAV Histogram 統計。
-- [x] 使用 `fc /b` 進行傳輸檔案完整性驗證。
-- [x] 建立正式 Benchmark CSV 與 Excel。
-- [ ] 保存完整 `mingw32-make test` 輸出、GCC 版本及對應 Commit SHA。
-- [ ] 補充兩台實體電腦的測試環境與證據。
-- [ ] 確認三份正式統計檔案、圖表及相關文件均已推送 GitHub。
-- [ ] 將正式 Benchmark 圖表與分析整合至 `slides.pdf`。
-- [ ] 與其他組員核對最終分工、文件與口頭展示內容。
+- [x] 完成 TCP-01～TCP-07 已規劃的本機整合測試。
+- [x] 完成非法 Huffman Padding 拒絕測試。
+- [x] 完成 TCP 傳輸中途斷線測試，Receiver Exit Code 為 1。
+- [x] 完成 WAV 奇數 data chunk 與零 Sample WAV 邊界測試。
+- [x] 完成雙機 RAW/HUFF 中文、英文與 Emoji 聊天測試。
+- [x] 完成雙機 TXT/WAV CLI 及聊天 `/send` 功能驗收。
+- [x] 使用 SHA-256 驗證雙機 TXT/WAV 接收檔案與原始檔案一致。
+- [x] 完成 localhost 40 次正式效能量測。
+- [x] 完成雙機 40 次正式效能量測。
+- [x] 整理雙機 40 對 Sender／Receiver STATS。
+- [x] 產生 80 次量測比較 Excel、原始 CSV 及中位數。
+- [x] 完成中文字元、英文字元頻率與 WAV Histogram 統計。
+- [x] 完成 Shannon Entropy、Huffman Codebook 與壓縮率分析。
+- [x] 完成雙機測試環境、IP、GCC 版本及網路媒介記錄。
+- [x] 在已驗證的 Windows MinGW 環境完成乾淨 Clone 編譯及 114 PASS 測試。
+- [ ] 補齊乾淨 Clone 驗證時的完整 Commit SHA 與必要測試證據。
+- [ ] 確認最終 Repository 文件及測試成果皆已 Push 到 GitHub。
+- [ ] 將正式 Benchmark 圖表及效能分析整合至 `slides.pdf`。
+- [ ] 與其他組員確認最終分工、程式貢獻及口頭展示內容。
 
 ---
 
-本文件以已執行的測試、保留的 STATS 及 Git 紀錄為依據。正式效能報告優先使用 `benchmarks/formal_raw_40.csv` 與 `benchmarks/formal_medians.csv`，歷史探索性量測不與正式 40 筆資料混用。
+本文件以實際執行的單元測試、TCP 整合測試、Sender／Receiver STATS、SHA-256 驗證結果及 Git 紀錄為依據。
+
+正式效能報告包含兩種環境、共 80 次量測：
+
+- Localhost：`benchmarks/formal_raw_40.csv`、`benchmarks/formal_medians.csv`。
+- 雙實體電腦：`benchmarks/two_pc_raw_40.csv`、`benchmarks/two_pc_medians.csv`。
+- 統整比較：`benchmarks/TextLink_Benchmark_80.xlsx`。
+
+歷史探索性量測與額外控制實驗不納入正式 80 次 Benchmark 統計。
