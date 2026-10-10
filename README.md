@@ -289,7 +289,7 @@ powershell -ExecutionPolicy Bypass -File .\tests\test_tcp_malformed.ps1 -Case TC
 
 雙機測試使用區域網路進行 TCP 傳輸，不使用 localhost IP。
 
-實際網路媒介（Wi-Fi、乙太網路或手機熱點）須依測試當日連線方式補充。
+雙機測試使用混合式區域網路連線：電腦 A 透過乙太網路（Ethernet）連接網路，電腦 B 透過 Wi-Fi 連接網路，兩端以 TCP IPv4 進行傳輸。本次未獨立量測可用網路頻寬、延遲及封包遺失率。
 
 #### 8.2.3 正式量測次數
 

@@ -830,6 +830,193 @@ Histogram 用來觀察 sample 值的分布情況，但因每個區間包含多�
 
 本項僅用來證明量測腳本的重現流程，不代表正式資料集的壓縮表現。
 
+---
+
+## 雙實體電腦功能驗收與正式 Benchmark（2026-10-10）
+
+### 一、測試目的
+
+本次測試驗證 TextLink 在兩台實體電腦之間，能否透過指定 IPv4 位址及 TCP Port，完成 RAW/HUFF 文字聊天、TXT/WAV 檔案傳輸、無損解碼與傳輸統計。
+
+此外，針對四種正式測試檔案執行 RAW/HUFF 各五次效能量測，分析壓縮比例、編解碼耗時、傳送端與接收端總耗時。
+
+### 二、雙機測試環境
+
+| 項目 | 電腦 A | 電腦 B |
+|---|---|---|
+| 測試角色 | Receiver / Chat Server | Sender / Chat Client |
+| 作業系統 | Windows | Windows |
+| 網路介面 | 乙太網路（Ethernet） | Wi-Fi |
+| IPv4 位址 | `192.168.0.140` | `192.168.0.188` |
+| TCP Port | 5000 | 連線至 `192.168.0.140:5000` |
+| GCC 版本 | MinGW.org GCC 6.3.0 | MinGW-Builds GCC 14.2.0 |
+| Git Commit | `0179c758612702dd27618b0132ca893bf193499f` | 相同 |
+
+本次為乙太網路與 Wi-Fi 混合連線的區域網路測試，並非兩台電腦均使用無線網路。
+
+兩台電腦使用相同 Git Commit，但硬體及 GCC 版本不同，因此後續比較需考慮執行環境差異。
+
+### 三、雙機功能驗收結果
+
+| 驗收項目 | 測試內容 | 結果 |
+|---|---|---|
+| 0 | 指定 IPv4 / TCP Port 跨電腦連線 | PASS |
+| 1 | RAW/HUFF 中文、英文與 4-byte UTF-8 Emoji 聊天 | PASS |
+| 3 | 中文 TXT CLI RAW/HUFF 傳輸 | PASS |
+| 3 | 英文 TXT CLI RAW/HUFF 傳輸 | PASS |
+| 3 | 中文 TXT 聊天 `/send` RAW/HUFF | PASS |
+| 4 | 音樂 WAV CLI RAW/HUFF、無損還原與播放 | PASS |
+| 4 | 雜訊 WAV CLI RAW/HUFF、無損還原 | PASS |
+| 4 | 音樂 WAV 聊天 `/send` RAW/HUFF、播放 | PASS |
+| 7 | 傳送端與接收端 STATS 輸出及比例驗算 | PASS（已測案例） |
+| 7a | RAW Ratio 約 1.0001；中文 HUFF Ratio 小於 1 | PASS |
+
+TXT/WAV 正式檔案傳輸以 SHA-256 比對傳送前與接收後的檔案內容，確認雜湊值一致。
+
+聊天介面測試亦確認，`/send` 完成後同一條 TCP 連線仍可繼續傳送及接收聊天訊息。
+
+上述結果代表已完成的雙機功能測試；其他異常封包與 Huffman 邊界案例的本機驗證，仍以本文件原有章節為準，不將其直接視為全部已跨機測試。
+
+### 四、正式 Benchmark 測試設計
+
+使用四份大於 1 MB 的測試檔案：
+
+| 檔案 | 雙機測試原始大小 |
+|---|---:|
+| `real_chinese.txt` | 1,202,641 bytes |
+| `real_english.txt` | 1,261,850 bytes |
+| `audio_music_20s.wav` | 3,528,044 bytes |
+| `audio_noise.wav` | 1,120,044 bytes |
+
+每個檔案分別執行 RAW 與 HUFF，且每種模式重複五次。
+
+雙機正式量測數量：
+
+`4 個檔案 × 2 種模式 × 5 次 = 40 次`
+
+加上先前 localhost 40 次，合計 80 次正式 Benchmark。
+
+統計方法為每組五次取中位數（Median）。
+
+### 五、雙機 Benchmark 執行方式
+
+接收端電腦 A 執行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\benchmarks\two_pc_receiver.ps1 -Count 40 -Port 5000
+```
+
+傳送端電腦 B 執行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\benchmarks\two_pc_sender.ps1 -HostIP 192.168.0.140 -Port 5000
+```
+
+固定測試順序：
+
+1. 中文 TXT：RAW 5 次、HUFF 5 次
+2. 英文 TXT：RAW 5 次、HUFF 5 次
+3. 音樂 WAV：RAW 5 次、HUFF 5 次
+4. 雜訊 WAV：RAW 5 次、HUFF 5 次
+
+每次傳輸完成後，接收端自動重新啟動 `recv`。
+
+Sender 與 Receiver 分別保存 40 份 Log。
+
+執行完成後，在電腦 A 使用：
+
+```powershell
+py .\benchmarks\merge_two_pc.py
+```
+
+程式依照測試編號配對兩端 STATS，檢查 `mode`、`file_bytes`、`wire_bytes`、符號模式及 Ratio 是否一致。
+
+實際執行結果：
+
+- Sender Log：40 份
+- Receiver Log：40 份
+- Sender STATS：40 筆
+- Receiver STATS：40 筆
+- 配對驗證：40/40 PASS
+
+### 六、雙機 Benchmark 中位數
+
+| 測試檔案 | 模式 | Ratio | Sender Total（ms） | Receiver Total（ms） |
+|---|---|---:|---:|---:|
+| 中文 TXT | RAW | 1.0001 | 74.6 | 71.7 |
+| 中文 TXT | HUFF | 0.3254 | 113.2 | 87.4 |
+| 英文 TXT | RAW | 1.0001 | 136.9 | 133.0 |
+| 英文 TXT | HUFF | 0.5415 | 116.5 | 80.5 |
+| 音樂 WAV | RAW | 1.0001 | 214.7 | 209.8 |
+| 音樂 WAV | HUFF | 1.0851 | 3,956.0 | 328.0 |
+| 雜訊 WAV | RAW | 1.0001 | 136.0 | 132.6 |
+| 雜訊 WAV | HUFF | 1.4062 | 7,059.5 | 150.4 |
+
+以上均為五次量測的中位數，Sender 與 Receiver 的 `total_ms` 為不同計時區間，不可直接相加。
+
+### 七、實驗結果分析
+
+中文 TXT 的 Huffman 傳輸比例為 32.54%，英文 TXT 為 54.15%，顯示自然語言文字能有效降低上線資料量。
+
+雙機英文 TXT 使用 HUFF 的傳送端總耗時中位數為 116.5 ms，低於 RAW 的 136.9 ms；中文 TXT 則由 RAW 的 74.6 ms 增加至 HUFF 的 113.2 ms。
+
+音樂 WAV 的 HUFF 傳輸比例為 108.51%，雜訊 WAV 為 140.62%，表示 Huffman S16 模式在這兩份資料上均發生膨脹。
+
+進一步檢查 WAV HUFF 的五次原始量測，編碼時間中位數分別為：
+
+- 音樂 WAV：3,624.6 ms
+- 雜訊 WAV：6,890.7 ms
+
+顯示 WAV HUFF 在本次雙機環境下的傳送端效能瓶頸主要出現在編碼階段。
+
+### 八、額外 localhost 控制實驗
+
+為調查電腦 B 的 WAV Huffman 編碼時間，在同一台電腦 B 上使用 `127.0.0.1:5001` 傳送 `audio_noise.wav`，並啟用 HUFF S16。
+
+單次測試結果：
+
+| 指標 | 測試結果 |
+|---|---:|
+| `encode_ms` | 7,568.2 ms |
+| `send_ms` | 23.3 ms |
+| `decode_ms` | 325,680.8 ms |
+| Sender Total | 約 33,278.2 ms |
+| Receiver Total | 325,708.6 ms |
+| 接收端存檔 | 成功 |
+
+此測試顯示，電腦 B 即使使用 localhost，Huffman S16 編碼仍然耗時數秒，且該次本機解碼出現異常偏長的情況。
+
+本項為額外單次控制實驗，不納入正式 80 筆 Benchmark 統計。
+
+目前不能僅憑此結果斷定差異由 GCC 版本或特定程式函式造成，仍須進一步控制硬體、編譯器與系統負載等條件。
+
+### 九、測試結論與限制
+
+本次測試已完成兩台實體電腦之間的 TCP 聊天、TXT/WAV RAW/HUFF 無損傳輸、聊天中檔案傳送，以及 40 次雙機 Benchmark。
+
+結果顯示，Huffman 在文字資料上具有良好的壓縮率，但是否縮短總耗時，仍取決於編解碼成本與傳輸環境；對高熵音訊，Huffman 可能同時增加傳輸量及處理時間。
+
+主要限制包括：
+
+- 電腦 A 使用乙太網路，電腦 B 使用 Wi-Fi，測試路徑為混合網路環境。
+- 兩台電腦使用不同 GCC 版本與硬體。
+- Localhost 與雙機測試的中文、英文檔案大小不完全相同。
+- 未獨立控制或量測網路頻寬與延遲。
+- 額外控制實驗的解碼時間異常仍待深入調查。
+
+### 十、測試資料與重現工具
+
+- [雙機 40 筆原始數據](../benchmarks/two_pc_raw_40.csv)
+- [雙機中位數](../benchmarks/two_pc_medians.csv)
+- [80 次 Benchmark Excel](../benchmarks/TextLink_Benchmark_80.xlsx)
+- [雙機 Sender 腳本](../benchmarks/two_pc_sender.ps1)
+- [雙機 Receiver 腳本](../benchmarks/two_pc_receiver.ps1)
+- [雙機 Log 合併程式](../benchmarks/merge_two_pc.py)
+- [Localhost 原始數據](../benchmarks/formal_raw_40.csv)
+- [Localhost 中位數](../benchmarks/formal_medians.csv)
+
+正式雙機 Sender 與 Receiver Log 分別保存於 `benchmarks/logs_two_pc_sender/`、`benchmarks/logs_two_pc_receiver/`。
+
 ## 11. 提交前驗證清單
 
 - [x] 新增十項 V 邊界與異常輸入測試。
