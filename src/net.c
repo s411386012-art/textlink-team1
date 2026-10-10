@@ -215,11 +215,30 @@ socket_t net_listen_accept(const char *bind_ip, int port, char *peer, size_t pee
     socket_t ls = socket(AF_INET, SOCK_STREAM, 0);
     if (ls == SOCK_INVALID) { net_perror("socket"); return SOCK_INVALID; }
 
-    /* SO_REUSEADDR：程式重開時允許立刻重綁同一個 port */
-    /* （沒有設的話，上一條連線剛關掉的一、兩分鐘內，作業系統可能還保留著那個 port，bind 會失敗；
-     *   開發時一直重開程式，這會很煩。） */
+    /*
+     * Windows 的 SO_REUSEADDR 可能允許第二個程序重複綁定
+     * 同一 IP/Port，因此改用 SO_EXCLUSIVEADDRUSE。
+     *
+     * Linux/macOS 保留 SO_REUSEADDR，方便伺服器重新啟動。
+     */
     int yes = 1;
-    setsockopt(ls, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes, sizeof(yes));
+
+#ifdef _WIN32
+    if (setsockopt(ls, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+                   (const char *)&yes, sizeof(yes)) < 0) {
+        net_perror("setsockopt(SO_EXCLUSIVEADDRUSE)");
+        CLOSESOCK(ls);
+        return SOCK_INVALID;
+    }
+#else
+    if (setsockopt(ls, SOL_SOCKET, SO_REUSEADDR,
+                   (const char *)&yes, sizeof(yes)) < 0) {
+        net_perror("setsockopt(SO_REUSEADDR)");
+        CLOSESOCK(ls);
+        return SOCK_INVALID;
+    }
+#endif
+
 
     /* 2. 填「位址卡」struct sockaddr_in：IPv4、哪個 IP、哪個 port。先用 memset 整個清成 0，沒填到的欄位才不會是垃圾值。
      *    htons／htonl：把整數轉成「網路位元組順序」（big-endian）。IP 與 port 是要給網路上其他機器看的，
