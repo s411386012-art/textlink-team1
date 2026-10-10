@@ -36,7 +36,11 @@
 | FAIL | 0 |
 | TODO | 0 |
 
-原先為 104 PASS，本次增加十項邊界及異常輸入測試，結果達到 114 PASS。
+本專案的單元測試最初為 **82 PASS**。D（LiJheChen）於 Git Commit `d65e444` 增加 **22 項 Frame 與 Huffman 回歸測試**，使測試數量提升至 **104 PASS**；之後 V（s411386011）於 Git Commit `dc3a506` 補充 **10 項邊界與異常輸入測試**，最終達到 **114 PASS、0 FAIL、0 TODO**。
+
+D 的測試重點包含 Frame 長度邊界、Huffman Codebook 合法性、Prefix Code、Padding、截斷 Bitstream 與深層 Huffman Code；V 的測試則著重 Frame 長度上限、UTF-8 異常輸入、內嵌 NUL、截斷 Huffman Header 及解碼輸出容量限制。
+
+以上 114 項為 `mingw32-make test` 的離線單元測試結果，不包含額外執行的 TCP 異常封包、檔案傳輸、雙機測試及 80 次正式 Benchmark。
 
 代表性 Git commits：
 
@@ -736,7 +740,8 @@ HUFF 傳輸比例約 108.51%，代表傳輸量反而增加約 8.51%。
 
 ### 7.5 實驗限制
 
-- 正式 40 次效能量測均使用 localhost。
+- 最初的 40 次正式效能量測使用 localhost；後續另外完成 40 次雙實體電腦量測，合計 80 次。
+- Localhost 與雙機量測使用不同硬體、網路條件，部分 TXT 測試檔案大小也不同，因此不可直接將差異完全歸因於網路環境。
 - 目前沒有將雙機功能測試誤列為雙機效能量測。
 - 各端 `total_ms` 不可直接相加視為完整端對端時間。
 - 測試檔案的資料分布會影響 Huffman 表現。
